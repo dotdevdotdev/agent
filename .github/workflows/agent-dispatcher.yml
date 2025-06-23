@@ -38,12 +38,14 @@ jobs:
             --argjson issue '${{ toJson(github.event.issue) }}' \
             --argjson comment '${{ toJson(github.event.comment) }}' \
             --argjson repository '${{ toJson(github.event.repository) }}' \
+            --argjson sender '${{ toJson(github.event.sender) }}' \
             '{
               event_type: $event_type,
               action: $action,
               issue: $issue,
               comment: $comment,
               repository: $repository,
+              sender: $sender,
               timestamp: now
             }')
 
