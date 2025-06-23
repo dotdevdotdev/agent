@@ -75,23 +75,3 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  notify-agent-unavailable:
-    runs-on: ubuntu-latest
-    if: |
-      github.event.action == 'opened' && 
-      contains(github.event.issue.labels.*.name, 'agent:queued') &&
-      !secrets.AGENT_WEBHOOK_URL
-
-    steps:
-      - name: Comment on Issue
-        run: |
-          gh issue comment ${{ github.event.issue.number }} \
-            --body "🚧 **Agent Server Not Configured**
-
-          The agent server webhook URL is not configured. Please contact an administrator to set up the agent infrastructure.
-
-          Required repository secrets:
-          - \`AGENT_WEBHOOK_URL\`: The URL of the agent server
-          - \`AGENT_WEBHOOK_SECRET\`: Webhook signature secret"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

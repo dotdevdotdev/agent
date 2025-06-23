@@ -58,6 +58,19 @@ app.include_router(webhook_router, prefix="/webhook", tags=["webhooks"])
 app.include_router(jobs_router, prefix="/jobs", tags=["jobs"])
 
 
+@app.get("/", tags=["root"])
+async def root():
+    """Welcome endpoint for the Agentic GitHub Issue Response System"""
+    return {
+        "message": "🤖 Agentic GitHub Issue Response System",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/docs",
+        "health": "/health",
+        "description": "AI-powered system for automatically responding to GitHub issues"
+    }
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
