@@ -1,5 +1,5 @@
 """
-GitHub webhook endpoints
+Enhanced GitHub webhook endpoints with intelligent event routing
 """
 
 import hashlib
@@ -12,13 +12,20 @@ from fastapi.responses import JSONResponse
 
 from config.settings import settings
 from src.models.github import GitHubWebhookPayload
-from src.models.jobs import JobCreate, JobResponse
 from src.services.job_manager import JobManager
+from src.services.github_client import GitHubClient
+from src.services.agent_state_machine import AgentStateMachine
+from src.services.event_router import EventRouter
 from src.utils.webhook_validator import validate_github_webhook
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+# Initialize services
 job_manager = JobManager()
+github_client = GitHubClient()
+state_machine = AgentStateMachine(github_client, job_manager)
+event_router = EventRouter(github_client, job_manager, state_machine)
 
 
 async def verify_webhook_signature(request: Request) -> None:
@@ -34,96 +41,89 @@ async def verify_webhook_signature(request: Request) -> None:
 
 @router.post("/github")
 async def github_webhook(
-    payload: GitHubWebhookPayload,
-    background_tasks: BackgroundTasks,
     request: Request,
+    background_tasks: BackgroundTasks,
     _: None = Depends(verify_webhook_signature),
 ) -> JSONResponse:
     """
-    Handle GitHub webhook events for issues
+    Enhanced GitHub webhook handler with intelligent event routing
     """
+    # Get event type and payload
+    event_type = request.headers.get("X-GitHub-Event", "unknown")
+    delivery_id = request.headers.get("X-GitHub-Delivery", "unknown")
+    
+    try:
+        payload = await request.json()
+    except Exception as e:
+        logger.error("Failed to parse webhook payload", error=str(e))
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
     logger.info(
         "Received GitHub webhook",
-        action=payload.action,
-        issue_number=payload.issue.number,
-        repository=payload.repository.full_name,
+        event_type=event_type,
+        delivery_id=delivery_id,
+        action=payload.get('action'),
+        repository=payload.get('repository', {}).get('full_name'),
+        issue_number=payload.get('issue', {}).get('number') or payload.get('number')
     )
 
-    # Only process 'opened' issue events for now
-    if payload.action != "opened":
-        logger.info("Ignoring non-opened issue event", action=payload.action)
-        return JSONResponse(
-            content={"message": f"Ignored {payload.action} event"}, status_code=200
-        )
-
     try:
-        # Create job for processing the issue
-        job_create = JobCreate(
-            issue_number=payload.issue.number,
-            repository_full_name=payload.repository.full_name,
-            issue_title=payload.issue.title,
-            issue_body=payload.issue.body,
-        )
+        # Clean up event cache periodically
+        if delivery_id.endswith('0'):  # Every ~10th event
+            await event_router.cleanup_event_cache()
 
-        # Submit job to background processing
-        job = await job_manager.create_job(job_create)
-
-        # Add background task to process the issue
-        background_tasks.add_task(process_github_issue, job.job_id, payload)
-
+        # Route to appropriate processor
+        result = await event_router.route_event(event_type, payload)
+        
+        # Log result
         logger.info(
-            "Created job for GitHub issue",
-            job_id=job.job_id,
-            issue_number=payload.issue.number,
+            "Webhook event processed",
+            event_type=event_type,
+            delivery_id=delivery_id,
+            status=result.get('status'),
+            job_id=result.get('job_id')
         )
 
-        return JSONResponse(
-            content={
-                "message": "Issue processing job created",
-                "job_id": job.job_id,
-                "issue_number": payload.issue.number,
-            },
-            status_code=202,
-        )
+        # Return appropriate response
+        status_code = result.get('status_code', 200)
+        if result.get('status') == 'error':
+            status_code = 500
+        elif result.get('status') in ['accepted', 'restarted']:
+            status_code = 202
+
+        return JSONResponse(content=result, status_code=status_code)
 
     except Exception as e:
         logger.error(
-            "Failed to create job for GitHub issue",
-            error=str(e),
-            issue_number=payload.issue.number,
+            "Webhook processing failed",
+            event_type=event_type,
+            delivery_id=delivery_id,
+            error=str(e)
         )
-        raise HTTPException(status_code=500, detail="Failed to create processing job")
+        return JSONResponse(
+            content={
+                "status": "error", 
+                "error": "Internal processing error",
+                "event_type": event_type
+            }, 
+            status_code=500
+        )
 
 
-async def process_github_issue(job_id: str, payload: GitHubWebhookPayload) -> None:
-    """
-    Background task to process GitHub issue with AI
-    """
+# Health check endpoint for webhook service
+@router.get("/health")
+async def webhook_health() -> JSONResponse:
+    """Health check for webhook service"""
     try:
-        logger.info("Starting issue processing", job_id=job_id)
-
-        # Mark job as running
-        await job_manager.update_job_status(job_id, "running")
-
-        # TODO: Implement the actual processing logic:
-        # 1. Create git worktree
-        # 2. Run claude code CLI
-        # 3. Process results
-        # 4. Update GitHub issue
-        # 5. Cleanup worktree
-
-        # For now, just simulate processing
-        import asyncio
-
-        await asyncio.sleep(5)  # Simulate work
-
-        # Mark job as completed
-        await job_manager.update_job_status(
-            job_id, "completed", result={"message": "Issue processed successfully"}
-        )
-
-        logger.info("Issue processing completed", job_id=job_id)
-
+        stats = event_router.get_event_stats()
+        return JSONResponse(content={
+            "status": "healthy",
+            "service": "webhook-handler",
+            "event_router_stats": stats
+        })
     except Exception as e:
-        logger.error("Issue processing failed", job_id=job_id, error=str(e))
-        await job_manager.update_job_status(job_id, "failed", error_message=str(e))
+        logger.error("Health check failed", error=str(e))
+        return JSONResponse(
+            content={"status": "unhealthy", "error": str(e)}, 
+            status_code=500
+        )

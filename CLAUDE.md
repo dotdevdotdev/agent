@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an Agentic GitHub Issue Response System - an AI-powered FastAPI application that automatically responds to GitHub issues by leveraging the Claude Code CLI tool for code analysis and generation. The system creates isolated git worktrees for each issue and processes them asynchronously.
+This is an Agentic GitHub Issue Response System - an AI-powered FastAPI application with sophisticated GitHub integration that automatically processes GitHub issues using intelligent parsing, advanced state management, and rich user communication. The system features:
+
+**Phase 1 (Completed)**: Core infrastructure with webhook processing and basic GitHub integration
+**Phase 2 (Completed)**: Enhanced GitHub integration with intelligent parsing, conversation memory, error recovery, and health monitoring
+
+The system creates isolated git worktrees for each issue and processes them asynchronously with comprehensive progress tracking and user feedback.
 
 ## Development Commands
 
@@ -103,11 +108,25 @@ gh auth login
 7. **Cleanup**: Worktree removed and issue marked `agent:completed`
 
 ### Key Services
-- **Webhook Handler**: Processes GitHub issue events and GitHub Actions dispatches
+
+**Phase 1 Services:**
+- **Webhook Handler**: Processes GitHub events with intelligent routing
 - **Job Manager**: Tracks async AI processing jobs with state management
-- **GitHub Client**: Comprehensive API integration for comments, labels, and issues
+- **GitHub Client**: Comprehensive API integration with 15+ agent-specific methods
 - **Git Service**: Manages worktree isolation for sandboxed processing
-- **Claude Service**: CLI integration and monitoring
+
+**Phase 2 Enhanced Services:**
+- **Issue Parser**: Intelligent GitHub issue template parsing and validation
+- **Task Validator**: Multi-dimensional task validation with security checks
+- **Agent State Machine**: 11-state workflow with automatic transitions
+- **Progress Reporter**: Rich progress communication with emoji and formatting
+- **Event Router**: Multi-event processing with deduplication
+- **Comment Analyzer**: User intent detection and command processing
+- **Conversation Manager**: Context-aware conversation memory
+- **Response Generator**: Personalized response generation
+- **Error Classifier**: Intelligent error categorization and recovery strategies
+- **Recovery Manager**: Automatic error recovery and escalation
+- **Health Monitor**: System health monitoring and anomaly detection
 
 ## Configuration
 
