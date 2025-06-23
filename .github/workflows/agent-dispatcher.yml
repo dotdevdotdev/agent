@@ -48,7 +48,7 @@ jobs:
             }')
 
           # Generate HMAC signature
-          signature=$(echo -n "$payload" | openssl dgst -sha256 -hmac "$AGENT_WEBHOOK_SECRET" -binary | base64)
+          signature=$(echo -n "$payload" | openssl dgst -sha256 -hmac "$AGENT_WEBHOOK_SECRET" | cut -d' ' -f2)
 
           # Send webhook
           curl -X POST "$AGENT_WEBHOOK_URL" \
