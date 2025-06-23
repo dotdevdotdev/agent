@@ -1,0 +1,97 @@
+name: 🤖 Agent Task Dispatcher
+
+on:
+  issues:
+    types: [opened, labeled, closed]
+  issue_comment:
+    types: [created]
+
+jobs:
+  dispatch-to-agent:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'agent:queued')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'agent:queued') ||
+      (github.event.action == 'created' && contains(github.event.issue.labels.*.name, 'agent:in-progress'))
+
+    steps:
+      - name: Validate Issue Template
+        id: validate
+        run: |
+          # Check if issue uses agent template
+          if [[ "${{ github.event.issue.body }}" == *"Task Type"* ]]; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Webhook to Agent Server
+        if: steps.validate.outputs.valid == 'true'
+        env:
+          AGENT_WEBHOOK_URL: ${{ secrets.AGENT_WEBHOOK_URL }}
+          AGENT_WEBHOOK_SECRET: ${{ secrets.AGENT_WEBHOOK_SECRET }}
+        run: |
+          # Prepare webhook payload
+          payload=$(jq -n \
+            --arg event_type "${{ github.event_name }}" \
+            --arg action "${{ github.event.action }}" \
+            --argjson issue '${{ toJson(github.event.issue) }}' \
+            --argjson comment '${{ toJson(github.event.comment) }}' \
+            --argjson repository '${{ toJson(github.event.repository) }}' \
+            '{
+              event_type: $event_type,
+              action: $action,
+              issue: $issue,
+              comment: $comment,
+              repository: $repository,
+              timestamp: now
+            }')
+
+          # Generate HMAC signature
+          signature=$(echo -n "$payload" | openssl dgst -sha256 -hmac "$AGENT_WEBHOOK_SECRET" -binary | base64)
+
+          # Send webhook
+          curl -X POST "$AGENT_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: sha256=$signature" \
+            -H "X-GitHub-Event: ${{ github.event_name }}" \
+            -H "User-Agent: GitHub-Hookshot/agent-dispatcher" \
+            -d "$payload" \
+            --fail-with-body
+
+      - name: Handle Webhook Failure
+        if: failure()
+        run: |
+          # Comment on issue if webhook fails
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "⚠️ **Agent Dispatch Failed**
+
+          The agent server could not be reached. Please check:
+          - Agent server is running
+          - Webhook URL is configured correctly
+          - Network connectivity is available
+
+          You can retry by removing and re-adding the \`agent:queued\` label."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-agent-unavailable:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.action == 'opened' && 
+      contains(github.event.issue.labels.*.name, 'agent:queued') &&
+      !secrets.AGENT_WEBHOOK_URL
+
+    steps:
+      - name: Comment on Issue
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "🚧 **Agent Server Not Configured**
+
+          The agent server webhook URL is not configured. Please contact an administrator to set up the agent infrastructure.
+
+          Required repository secrets:
+          - \`AGENT_WEBHOOK_URL\`: The URL of the agent server
+          - \`AGENT_WEBHOOK_SECRET\`: Webhook signature secret"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

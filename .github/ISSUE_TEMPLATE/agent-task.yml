@@ -1,0 +1,87 @@
+name: 🤖 New Agent Task
+description: Assign a new task to the Claude-powered agent.
+title: "[AGENT]: "
+labels: ["agent:queued"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Task Submission Form
+        Please fill out the details below to queue a new task for the AI agent.
+
+  - type: dropdown
+    id: task-type
+    attributes:
+      label: Task Type
+      description: Select the primary capability you want the agent to use.
+      options:
+        - "Code Analysis"
+        - "Documentation Generation"
+        - "Code Refactoring"
+        - "Research and Summarization"
+        - "General Question"
+        - "Bug Investigation"
+        - "Feature Implementation"
+        - "Code Review"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How urgent is this task?
+      options:
+        - "Low"
+        - "Medium"
+        - "High"
+        - "Critical"
+      default: 1
+    validations:
+      required: true
+
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Detailed Prompt
+      description: "Provide the full prompt for the agent. Be specific about what you want accomplished."
+      placeholder: "Example: Please analyze the performance of the `calculate_metrics` function and suggest optimizations..."
+    validations:
+      required: true
+
+  - type: input
+    id: relevant-files
+    attributes:
+      label: Relevant Files or URLs
+      description: "Optional. Comma-separated list of file paths or URLs to focus on."
+      placeholder: "e.g., src/main.py, docs/architecture.md, https://github.com/owner/repo/issues/123"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: "Any additional context, constraints, or requirements."
+      placeholder: "Background information, constraints, expected outcomes..."
+
+  - type: dropdown
+    id: output-format
+    attributes:
+      label: Preferred Output Format
+      description: How would you like the results delivered?
+      options:
+        - "Code changes with explanations"
+        - "Analysis report"
+        - "Documentation updates"
+        - "Implementation plan"
+        - "Bug fix with tests"
+      default: 0
+
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I understand this task will be processed by an AI agent.
+          required: true
+        - label: I have provided sufficient detail for the agent to complete this task.
+          required: true
