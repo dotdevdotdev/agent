@@ -13,6 +13,7 @@ from .job_manager import JobManager
 from .agent_state_machine import AgentStateMachine, AgentState
 from .issue_parser import IssueParser
 from .task_validator import TaskValidator
+from .processing_orchestrator import ProcessingOrchestrator
 
 logger = structlog.get_logger()
 
@@ -45,6 +46,10 @@ class IssueEventProcessor(EventProcessor):
         super().__init__(github_client, job_manager, state_machine)
         self.issue_parser = IssueParser()
         self.task_validator = TaskValidator()
+        self.processing_orchestrator = ProcessingOrchestrator(
+            github_client=github_client,
+            state_machine=state_machine
+        )
 
     async def can_handle(self, event_type: str, payload: Dict[str, Any]) -> bool:
         return event_type == "issues"
@@ -126,8 +131,8 @@ class IssueEventProcessor(EventProcessor):
                 job.job_id, repo_full_name, issue_number
             )
 
-            # If validation failed, request feedback
-            if not validation_result['is_valid']:
+            # Check if task is ready for processing (respects testing mode)
+            if not self.task_validator.is_ready_for_processing(parsed_task):
                 await self.github_client.create_validation_feedback(
                     repo_full_name, issue_number, validation_result
                 )
@@ -246,40 +251,60 @@ class IssueEventProcessor(EventProcessor):
         return {"status": "acknowledged", "message": "Issue reopened, add agent:queued to restart processing"}
 
     async def _process_validated_task(self, job_id: str, parsed_task) -> None:
-        """Process a validated task (background processing)"""
+        """Process a validated task using the complete Claude Code CLI workflow"""
         try:
-            # Transition to analyzing
-            await self.state_machine.transition_to(
-                job_id, AgentState.ANALYZING,
-                user_message="Analyzing task requirements and planning approach..."
+            # Get job details from job manager
+            job = await self.job_manager.get_job(job_id)
+            if not job:
+                raise Exception(f"Job {job_id} not found")
+            
+            # Create progress callback to update job status
+            async def progress_callback(message: str, progress: int):
+                await self.job_manager.update_job_progress(job_id, progress, message)
+                logger.info("Processing progress", job_id=job_id, progress=progress, message=message)
+            
+            # Execute the complete processing workflow
+            result_context = await self.processing_orchestrator.process_issue(
+                job_id=job_id,
+                repository=job.repository_full_name,
+                issue_number=job.issue_number,
+                parsed_task=parsed_task,
+                progress_callback=progress_callback
             )
-
-            # Simulate analysis phase
-            await asyncio.sleep(2)
-
-            # Transition to implementation
-            await self.state_machine.transition_to(
-                job_id, AgentState.IMPLEMENTING,
-                user_message="Beginning implementation of the solution..."
-            )
-
-            # TODO: This is where actual Claude Code CLI integration would happen
-            # For now, simulate processing
-            await asyncio.sleep(5)
-
-            # Mark as completed
-            await self.state_machine.transition_to(
-                job_id, AgentState.COMPLETED,
-                user_message="Task completed successfully!"
-            )
-
+            
+            # Update job with final results
+            final_result = {
+                "message": "Task processed successfully using Claude Code CLI",
+                "result_type": result_context.parsed_result.result_type.value if result_context.parsed_result else "unknown",
+                "confidence_score": result_context.parsed_result.confidence_score if result_context.parsed_result else 0,
+                "code_changes_count": len(result_context.parsed_result.code_changes) if result_context.parsed_result else 0,
+                "recommendations_count": len(result_context.parsed_result.recommendations) if result_context.parsed_result else 0,
+                "processing_metadata": result_context.metadata
+            }
+            
             await self.job_manager.update_job_status(
                 job_id, "completed",
-                result={"message": "Task processed successfully"}
+                result=final_result
+            )
+            
+            logger.info(
+                "Task processing completed successfully",
+                job_id=job_id,
+                result_type=result_context.parsed_result.result_type.value if result_context.parsed_result else "unknown",
+                duration=result_context.metadata.get("total_duration", 0)
             )
 
         except Exception as e:
-            await self.state_machine.handle_error(job_id, e)
+            # Handle errors through state machine
+            if hasattr(self, 'state_machine') and self.state_machine:
+                await self.state_machine.handle_error(job_id, e)
+            
+            # Update job status
+            await self.job_manager.update_job_status(
+                job_id, "failed", 
+                error_message=str(e)
+            )
+            
             logger.error("Task processing failed", job_id=job_id, error=str(e))
 
     async def _restart_job(self, job_id: str) -> None:

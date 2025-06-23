@@ -74,8 +74,8 @@ class CommentAnalyzer:
         sentiment = self._analyze_sentiment(comment_body)
         
         # Extract various elements
-        feedback_responses = self._extract_feedback_responses(comment_body)
-        clarifications = self._extract_clarifications(comment_body)
+        feedback_responses = self.extract_feedback_responses(comment_body, [])
+        clarifications = self.extract_clarifications(comment_body, [])
         urgency = self._assess_urgency(comment_body)
         key_phrases = self._extract_key_phrases(comment_body)
         mentioned_files = self._extract_file_mentions(comment_body)

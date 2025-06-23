@@ -361,6 +361,13 @@ class GitHubClient:
                 message = "Please address the following issues to improve your task:"
 
             comment_parts = [f"{emoji} **{title}**", f"\n{message}"]
+            
+            # Add testing mode indicator if present
+            if validation_result.get('warnings'):
+                for warning in validation_result['warnings']:
+                    if 'testing mode' in warning.lower():
+                        comment_parts.insert(1, f"\n🧪 **Testing Mode Active** - Reduced validation requirements applied")
+                        break
 
             if validation_result.get('errors'):
                 comment_parts.append("\n**❌ Issues to Fix:**")

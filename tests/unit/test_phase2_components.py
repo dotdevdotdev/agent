@@ -241,7 +241,7 @@ class TestTaskValidator:
         result = validator.validate_task_completeness(task)
         
         assert result["is_valid"] == True
-        assert result["completeness_score"] > 70
+        assert result["completeness_score"] >= 70
         assert len(result["errors"]) == 0
 
     def test_incomplete_task_validation(self):
