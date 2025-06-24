@@ -21,8 +21,10 @@ def validate_github_webhook(payload: bytes, signature: str, secret: str) -> bool
     Returns:
         bool: True if signature is valid, False otherwise
     """
-    if not signature.startswith("sha256="):
+    if not signature or not signature.startswith("sha256="):
         logger.warning("Invalid signature format", signature=signature)
+        # For debugging: log more details
+        logger.warning("Signature debug", signature_received=signature, secret_prefix=secret[:8])
         return False
 
     # Extract the signature hash

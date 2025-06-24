@@ -437,17 +437,17 @@ Please focus your analysis on the specified files."""
                 # Execute Claude with the prompt
                 result.status = ClaudeProcessStatus.RUNNING
                 
-                # Simple Claude execution - just ask the question
+                # Simple Claude execution using stdin
                 process_result = await asyncio.create_subprocess_exec(
                     self.cli_path,
-                    prompt,  # Direct prompt as argument
+                    stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
                 
-                # Wait for completion with timeout
+                # Wait for completion with timeout - send prompt via stdin
                 stdout, stderr = await asyncio.wait_for(
-                    process_result.communicate(), 
+                    process_result.communicate(input=prompt.encode('utf-8')), 
                     timeout=timeout
                 )
                 

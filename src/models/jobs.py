@@ -27,6 +27,7 @@ class JobCreate(BaseModel):
     issue_title: str
     issue_body: Optional[str] = None
     priority: int = Field(default=1, ge=1, le=10)
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class JobResponse(BaseModel):
@@ -42,6 +43,7 @@ class JobResponse(BaseModel):
     error_message: Optional[str] = None
     result: Optional[Dict[str, Any]] = None
     progress: float = Field(default=0.0, ge=0.0, le=1.0)
+    metadata: Optional[Dict[str, Any]] = None
 
     @classmethod
     def create_new(cls, job_create: JobCreate) -> "JobResponse":
@@ -52,6 +54,7 @@ class JobResponse(BaseModel):
             issue_number=job_create.issue_number,
             repository_full_name=job_create.repository_full_name,
             created_at=datetime.utcnow(),
+            metadata=job_create.metadata,
         )
 
 

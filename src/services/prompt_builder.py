@@ -594,7 +594,7 @@ Please provide a comprehensive and helpful response."""
 
 Please provide assistance with this request."""
 
-    def build_simple_question_prompt(self, context: 'PromptContext') -> 'BuiltPrompt':
+    def build_simple_question_prompt(self, context: 'PromptContext', task: ParsedTask) -> 'BuiltPrompt':
         """Build a simple prompt for general questions without file context"""
         
         # Simple template for general questions
@@ -610,10 +610,10 @@ Please provide a helpful and comprehensive answer to this question.
 Focus on clarity, accuracy, and practical guidance.
 """
         
-        # Build the prompt
+        # Build the prompt using task data
         formatted_prompt = template.format(
-            prompt=context.prompt,
-            context=context.context if context.context else "No additional context provided."
+            prompt=task.prompt,
+            context=task.context if task.context else "No additional context provided."
         )
         
         return BuiltPrompt(

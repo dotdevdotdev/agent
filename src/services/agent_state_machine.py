@@ -128,8 +128,7 @@ class AgentStateMachine:
         await self.job_manager.update_job_status(
             job_id, 
             self._map_state_to_job_status(new_state),
-            progress=metadata.progress_percentage,
-            metadata=job_context.metadata
+            progress=metadata.progress_percentage
         )
 
         # Update GitHub with new state

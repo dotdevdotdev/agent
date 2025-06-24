@@ -554,24 +554,21 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.BUILDING_PROMPT
         
         if progress_callback:
-            progress_callback("Building prompt for general question...", 20)
+            await progress_callback("Building prompt for general question...", 20)
         
-        # Create minimal prompt context
+        # Create minimal prompt context for general questions
         context.prompt_context = PromptContext(
-            task_type=context.parsed_task.task_type,
-            prompt=context.parsed_task.prompt,
-            context=context.parsed_task.context,
+            repository_name=context.repository,
+            issue_number=context.issue_number,
+            job_id=context.job_id,
+            working_directory="",  # No specific directory for general questions
             file_contents={},  # No files for general questions
-            repository_structure=[],
-            metadata={
-                "is_general_question": True,
-                "output_format": context.parsed_task.output_format
-            }
+            repository_structure=[]
         )
         
         # Build the prompt
         context.built_prompt = self.prompt_builder.build_simple_question_prompt(
-            context.prompt_context
+            context.prompt_context, context.parsed_task
         )
         
         logger.info("Simple prompt built", job_id=context.job_id, prompt_length=len(context.built_prompt.prompt))
@@ -583,7 +580,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.EXECUTING_CLAUDE
         
         if progress_callback:
-            progress_callback("Generating response...", 60)
+            await progress_callback("Generating response...", 60)
         
         # Execute Claude with simple prompt - no worktree needed
         execution_result = await self.worktree_manager.claude_service.execute_simple_prompt(
@@ -611,7 +608,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.PROCESSING_RESULTS
         
         if progress_callback:
-            progress_callback("Processing response...", 80)
+            await progress_callback("Processing response...", 80)
         
         # Get the Claude execution result
         claude_result = context.metadata.get("claude_execution", {})
@@ -645,7 +642,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.POSTING_TO_GITHUB
         
         if progress_callback:
-            progress_callback("Posting response to GitHub...", 90)
+            await progress_callback("Posting response to GitHub...", 90)
         
         # Post the response as a comment
         await self.github_client.post_threaded_comments(
@@ -673,7 +670,7 @@ class ProcessingOrchestrator:
         context.completed_at = datetime.now()
         
         if progress_callback:
-            progress_callback("✅ General question answered!", 100)
+            await progress_callback("✅ General question answered!", 100)
         
         # Update state machine
         if self.state_machine:
