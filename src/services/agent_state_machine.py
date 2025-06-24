@@ -370,6 +370,7 @@ class AgentStateMachine:
             AgentState.VALIDATING: [
                 StateTransition(AgentState.VALIDATING, AgentState.ANALYZING, description="Validation passed"),
                 StateTransition(AgentState.VALIDATING, AgentState.IN_PROGRESS, description="Skip analysis for simple tasks"),
+                StateTransition(AgentState.VALIDATING, AgentState.COMPLETED, description="Simple task completed directly"),
                 StateTransition(AgentState.VALIDATING, AgentState.AWAITING_FEEDBACK, description="Need user clarification"),
                 StateTransition(AgentState.VALIDATING, AgentState.FAILED, description="Validation failed")
             ],
