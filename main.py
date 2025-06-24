@@ -12,6 +12,8 @@ import structlog
 from src.api.webhooks import router as webhook_router
 from src.api.health import router as health_router
 from src.api.jobs import router as jobs_router
+from src.api.configuration import router as config_router
+from src.services.database_service import database_service
 from config.settings import settings
 
 # Configure structured logging
@@ -56,6 +58,7 @@ app.add_middleware(
 app.include_router(health_router, prefix="/health", tags=["health"])
 app.include_router(webhook_router, prefix="/webhook", tags=["webhooks"])
 app.include_router(jobs_router, prefix="/jobs", tags=["jobs"])
+app.include_router(config_router, tags=["configuration"])
 
 
 @app.get("/", tags=["root"])
@@ -74,16 +77,23 @@ async def root():
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
+    # Initialize database service
+    await database_service.initialize()
+    
     logger.info(
-        "Starting Agentic GitHub Issue Response System",
+        "Starting Agentic GitHub Issue Response System with Configuration Framework",
         host=settings.HOST,
         port=settings.PORT,
+        database_initialized=True
     )
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up on shutdown"""
+    # Close database connections
+    await database_service.close()
+    
     logger.info("Shutting down Agentic GitHub Issue Response System")
 
 

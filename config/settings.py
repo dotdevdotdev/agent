@@ -58,6 +58,23 @@ class Settings(BaseSettings):
         default=50, description="Minimum validation score for code-related tasks"
     )
 
+    # Configuration Framework Settings
+    DATABASE_URL: str = Field(
+        default="", description="Database connection URL (empty for in-memory)"
+    )
+    ENABLE_CONFIGURATION_FRAMEWORK: bool = Field(
+        default=True, description="Enable the configuration framework"
+    )
+    JWT_SECRET_KEY: str = Field(
+        default="your-secret-key-here", description="JWT secret key for API authentication"
+    )
+    JWT_ALGORITHM: str = Field(
+        default="HS256", description="JWT algorithm"
+    )
+    JWT_EXPIRATION_HOURS: int = Field(
+        default=24, description="JWT token expiration in hours"
+    )
+
     @property
     def admin_users_list(self) -> List[str]:
         """Get admin users as a list"""
