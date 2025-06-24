@@ -640,8 +640,8 @@ class ResultProcessor:
     def format_simple_response(self, parsed_result: 'ParsedResult', parsed_task) -> 'GitHubOutput':
         """Format a simple text response for general questions"""
         
-        # Extract the response from stdout
-        response_text = parsed_result.raw_output.strip()
+        # Extract the response from stdout (stored in metadata)
+        response_text = parsed_result.metadata.get("raw_output", "").strip()
         
         if not response_text:
             response_text = "I apologize, but I wasn't able to generate a response. Please try rephrasing your question."
@@ -658,15 +658,7 @@ class ResultProcessor:
         
         # Create simple GitHub output
         return GitHubOutput(
-            markdown_comment=formatted_response,
-            threaded_comments=[formatted_response],
-            pull_request_description="",
-            issue_update="",
-            labels_to_add=["agent:completed"],
-            labels_to_remove=["agent:in-progress", "agent:queued"],
-            metadata={
-                "response_type": "general_question",
-                "is_simple_response": True,
-                "character_count": len(response_text)
-            }
+            format_type=OutputFormat.MARKDOWN_COMMENT,
+            primary_comment=formatted_response,
+            suggested_labels=["agent:completed"]
         )

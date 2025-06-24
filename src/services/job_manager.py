@@ -177,3 +177,24 @@ class JobManager:
             logger.info(f"Cleaned up {len(jobs_to_remove)} old jobs")
 
         return len(jobs_to_remove)
+
+    async def update_job_progress(self, job_id: str, progress: int, message: str) -> bool:
+        """Update job progress with message"""
+        job = self._jobs.get(job_id)
+        if not job:
+            return False
+
+        # Update progress
+        job.progress = float(progress)
+        
+        # Add progress log
+        await self.add_job_log(job_id, f"Progress: {progress}% - {message}")
+
+        logger.info(
+            "Job progress updated", 
+            job_id=job_id, 
+            progress=progress, 
+            message=message
+        )
+
+        return True

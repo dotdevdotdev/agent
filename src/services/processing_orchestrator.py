@@ -11,7 +11,7 @@ from enum import Enum
 
 from .worktree_manager import WorktreeManager, WorktreeSession, WorktreeStatus
 from .prompt_builder import PromptBuilder, PromptContext, BuiltPrompt
-from .result_processor import ResultProcessor, ParsedResult, GitHubOutput, OutputFormat
+from .result_processor import ResultProcessor, ParsedResult, GitHubOutput, OutputFormat, ResultType
 from .issue_parser import ParsedTask, TaskType, OutputFormat as IssueOutputFormat
 from .github_client import GitHubClient
 from .agent_state_machine import AgentStateMachine, AgentState
@@ -615,15 +615,17 @@ class ProcessingOrchestrator:
         
         # Create simple parsed result for text response
         context.parsed_result = ParsedResult(
-            confidence_score=95,  # High confidence for simple questions
+            result_type=ResultType.ANALYSIS_REPORT,
             summary="General question answered",
-            has_code_changes=False,
-            has_new_files=False,
-            output_format=OutputFormat.THREADED_COMMENTS,
-            raw_output=claude_result.get("stdout", ""),
+            detailed_analysis=claude_result.get("stdout", ""),
+            confidence_score=95.0,  # High confidence for simple questions
             metadata={
                 "is_general_response": True,
-                "execution_time": claude_result.get("execution_time", 0)
+                "execution_time": claude_result.get("execution_time", 0),
+                "has_code_changes": False,
+                "has_new_files": False,
+                "output_format": OutputFormat.THREADED_COMMENTS.value,
+                "raw_output": claude_result.get("stdout", "")
             }
         )
         
@@ -645,20 +647,28 @@ class ProcessingOrchestrator:
             await progress_callback("Posting response to GitHub...", 90)
         
         # Post the response as a comment
-        await self.github_client.post_threaded_comments(
+        await self.github_client.create_comment(
             context.repository,
             context.issue_number,
-            context.github_output.threaded_comments,
-            context.job_id
+            context.github_output.primary_comment
         )
         
         # Update labels to indicate completion
-        await self.github_client.update_issue_labels(
+        await self.github_client.add_labels(
             context.repository,
             context.issue_number,
-            add_labels=["agent:completed"],
-            remove_labels=["agent:in-progress", "agent:queued"]
+            ["agent:completed"]
         )
+        
+        # Remove processing labels
+        try:
+            await self.github_client.remove_label(context.repository, context.issue_number, "agent:in-progress")
+        except:
+            pass  # Label might not exist
+        try:
+            await self.github_client.remove_label(context.repository, context.issue_number, "agent:queued")
+        except:
+            pass  # Label might not exist
         
         logger.info("Simple response posted to GitHub", job_id=context.job_id)
 
