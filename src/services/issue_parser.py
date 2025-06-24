@@ -35,6 +35,7 @@ class OutputFormat(str, Enum):
     DOCUMENTATION = "Documentation updates"
     IMPLEMENTATION_PLAN = "Implementation plan"
     BUG_FIX = "Bug fix with tests"
+    GENERAL_RESPONSE = "General response"
 
 
 @dataclass
@@ -49,7 +50,7 @@ class ParsedTask:
     validation_errors: List[str]
     raw_issue_body: str
     acknowledgements_confirmed: bool = False
-    testing_mode: bool = False  # Allow lower validation scores for testing
+    issue_author: str = ""  # GitHub username who created the issue
 
 
 class IssueParser:
@@ -67,7 +68,7 @@ class IssueParser:
             'acknowledgements': r'### Acknowledgements\s*\n(.*?)(?=\n###|\Z)'
         }
 
-    def parse_issue(self, issue_body: str, issue_title: str) -> ParsedTask:
+    def parse_issue(self, issue_body: str, issue_title: str, issue_author: str = "") -> ParsedTask:
         """Parse GitHub issue body and extract structured task data"""
         logger.info("Parsing GitHub issue", title=issue_title[:50])
 
@@ -106,10 +107,6 @@ class IssueParser:
 
         # Check acknowledgements
         acknowledgements_confirmed = self._check_acknowledgements(acknowledgements_text)
-        
-        # Check for testing mode flag
-        testing_mode = self._check_testing_mode(issue_body, issue_title)
-
         # Validate required fields
         if not prompt or prompt.strip() == "":
             validation_errors.append("Detailed prompt is required")
@@ -127,7 +124,7 @@ class IssueParser:
             validation_errors=validation_errors,
             raw_issue_body=issue_body,
             acknowledgements_confirmed=acknowledgements_confirmed,
-            testing_mode=testing_mode
+            issue_author=issue_author
         )
 
         # Estimate complexity
@@ -195,24 +192,6 @@ class IssueParser:
             'yes' in acknowledgements_text.lower() or
             'confirmed' in acknowledgements_text.lower()
         )
-
-    def _check_testing_mode(self, issue_body: str, issue_title: str) -> bool:
-        """Check if testing mode is enabled for this issue"""
-        # Check for testing flags in issue body or title
-        testing_indicators = [
-            '[test]',
-            '[testing]', 
-            '[dev]',
-            '[development]',
-            'testing mode',
-            'test mode',
-            'allow low validation',
-            'skip validation'
-        ]
-        
-        combined_text = (issue_body + " " + issue_title).lower()
-        
-        return any(indicator in combined_text for indicator in testing_indicators)
 
     def _estimate_complexity(self, task: ParsedTask) -> str:
         """Analyze task and estimate complexity (Simple/Medium/Complex)"""
@@ -298,9 +277,6 @@ class IssueParser:
         if not issue_body or len(issue_body.strip()) < 20:
             return None
 
-        # Check for testing mode
-        testing_mode = self._check_testing_mode(issue_body, issue_title)
-
         # Create a minimal parsed task
         return ParsedTask(
             task_type=TaskType.QUESTION,
@@ -312,6 +288,5 @@ class IssueParser:
             estimated_complexity="Simple",
             validation_errors=["Non-template issue - results may be limited"],
             raw_issue_body=issue_body,
-            acknowledgements_confirmed=False,
-            testing_mode=testing_mode
+            acknowledgements_confirmed=False
         )

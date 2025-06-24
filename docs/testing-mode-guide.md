@@ -1,51 +1,61 @@
-# Testing Mode Guide
+# Admin Override & General Questions Guide
 
 ## Overview
 
-The system now supports a **Testing Mode** that allows issues with lower validation scores (minimum 25 instead of 50) to be processed. This is perfect for testing simple questions and development scenarios while maintaining security.
+The system supports **Admin Override** functionality and **General Questions** with reduced validation requirements. This provides flexibility for development, testing, and simple Q&A scenarios while maintaining security.
 
-## How to Enable Testing Mode
+## Admin Override
 
-Add any of these indicators to your GitHub issue **title** or **body**:
+### For Admin Users
+Admin users (configured in `ADMIN_USERS` environment variable) can:
+- Process tasks that fail validation (they see warnings but aren't blocked)
+- Use any task type with bypass capability
+- Perfect for development, testing, and edge cases
 
-### Option 1: In Issue Title
-```
-[TEST] Can you explain how authentication works?
-[TESTING] Quick question about the API
-[DEV] Simple test task
-```
+**Current admin users**: Check your `.env` file for `ADMIN_USERS` configuration
 
-### Option 2: In Issue Body
+### Example Admin Usage
 ```markdown
+### Task Type
+Code Analysis
+
 ### Detailed Prompt
-This is a simple test question. [testing mode]
+Incomplete task with low validation score - admin can process anyway
 
 What does the login function do?
 ```
 
-### Option 3: Explicit Keywords
-- `testing mode`
-- `test mode` 
-- `allow low validation`
-- `[development]`
+*Admin will see validation warnings but task will process successfully*
 
-## What Testing Mode Does
+## General Questions
 
-### ✅ **Allows:**
-- **Lower validation scores** (25+ instead of 50+)
-- **Simple questions** without full template completion
-- **Incomplete context** for quick tests
-- **Missing file references** for general questions
-- **Security warnings** (passwords/secrets) for educational examples
+### For All Users
+Use **"General Question"** task type for:
+- Programming concept questions
+- Best practice advice
+- Architecture guidance
+- Quick explanations
 
-### ❌ **Still Blocks:**
-- **Critical validation errors** (malformed requests)
-- **Completely empty prompts**
-- **Actual security issues** in production contexts
+**Benefits:**
+- **Lower validation threshold** (30/100 instead of 50/100)
+- **Simplified processing** (no git worktree needed)
+- **Faster responses** (text-only, optimized workflow)
+- **"General response"** output format available
+
+### ✅ **Perfect for:**
+- **Programming questions** without file analysis
+- **Concept explanations** and best practices
+- **Architecture advice** and patterns
+- **Quick clarifications** on development topics
+
+### ❌ **Not suitable for:**
+- **Code analysis** requiring file examination
+- **Bug fixes** needing repository context
+- **Feature implementation** with code changes
 
 ## Example Usage
 
-### Regular Issue (Requires Score 50+)
+### Regular Code Task (Requires Score 50+)
 ```markdown
 ### Task Type
 Code Analysis
@@ -62,72 +72,108 @@ This is for our production system handling 10k+ users daily. We've noticed 2-3 s
 ✅ Score: 75/100 → ✅ Processes normally
 ```
 
-### Testing Mode Issue (Requires Score 25+)
+### General Question (Requires Score 30+)
 ```markdown
-[TEST] Quick question about authentication
+### Task Type
+General Question
 
 ### Detailed Prompt
-How does the login function work?
+How does JWT authentication work in web applications?
 
-🧪 Score: 30/100 → ✅ Processes in testing mode
+### Preferred Output Format
+General response
+
+💡 Score: 35/100 → ✅ Processes with simplified workflow
 ```
 
-## GitHub Feedback
-
-When testing mode is active, you'll see:
-
+### Admin Override Example
 ```markdown
-🧪 **Testing Mode Active** - Reduced validation requirements applied
+### Task Type
+Code Analysis
+
+### Detailed Prompt
+Quick check
+
+🔑 Score: 15/100 → ⚠️ Admin override allows processing
+```
+
+## GitHub Feedback Examples
+
+### General Question Mode:
+```markdown
+💡 **General Question Mode** - Lower validation threshold applied
 ✅ **Task Validation Successful**
 Your task has been validated with a completeness score of 35/100.
 
 ⚠️ **Warnings:**
-- ⚠️ Testing mode enabled - reduced validation requirements
+- 💡 General question mode - lower validation threshold applied
 ```
 
-## Security in Testing Mode
+### Admin Override:
+```markdown
+🔑 **Admin Override Active**
+⚠️ **Validation Override**
+Your task scored 15/100 but admin privileges allow processing.
 
-Testing mode is **secure by design**:
+⚠️ **Warnings:**
+- 🔑 Admin user detected - validation requirements can be overridden
+- ⚠️ Score below threshold (15/100 < 50) but admin override allows processing
+```
 
-- ✅ **Educational examples** with fake passwords/secrets are allowed
-- ✅ **Development questions** about security concepts are allowed  
-- ❌ **Actual credentials** or real secrets are still flagged
-- ❌ **Production security issues** are still blocked
+## Configuration
+
+### Setting Up Admin Users
+```bash
+# In your .env file
+ADMIN_USERS=admin-username,another-admin,dev-lead
+
+# Validation thresholds  
+GENERAL_QUESTION_MIN_SCORE=30
+STANDARD_MIN_SCORE=50
+```
+
+### Admin User Benefits
+- **See validation details** but aren't blocked by failures
+- **Process any task type** regardless of score
+- **Useful for development** and edge case testing
+- **Full transparency** with clear override indicators
 
 ## Best Practices
 
-### ✅ **Good for Testing:**
+### ✅ **Use General Questions For:**
 ```markdown
-[TEST] How does JWT authentication work?
-[DEV] Explain the password hashing function
-[TESTING] What's the difference between OAuth and SAML?
+How does JWT authentication work?
+What's the difference between OAuth and SAML?  
+Explain React hooks best practices
+What are SOLID principles?
 ```
 
-### ❌ **Still Use Full Template For:**
+### ✅ **Admin Override For:**
+- Development and testing scenarios
+- Edge cases and quick fixes
+- Bypassing validation for urgent tasks
+- Experimenting with incomplete requests
+
+### ❌ **Use Full Validation For:**
 - Production code analysis
 - Complex feature implementations  
 - Security-sensitive tasks
 - Detailed refactoring requests
 
-## Disabling Testing Mode
-
-Simply remove the testing indicators from your issue title/body:
-- Remove `[TEST]`, `[TESTING]`, `[DEV]` tags
-- Remove phrases like "testing mode" 
-- The system will revert to normal validation (50+ score required)
-
 ## API Integration
 
-For programmatic access, the testing mode status is available:
+For programmatic access:
 
 ```python
-# Parse issue
-parsed_task = issue_parser.parse_issue(issue_body, issue_title)
-print(f"Testing mode: {parsed_task.testing_mode}")
+# Parse issue with author info
+parsed_task = issue_parser.parse_issue(issue_body, issue_title, issue_author)
 
-# Validate with testing mode support
+# Check admin status
+is_admin = settings.is_admin_user(parsed_task.issue_author)
+
+# Validate with new logic
 validation_result = task_validator.validate_task_completeness(parsed_task)
 ready = task_validator.is_ready_for_processing(parsed_task)
 ```
 
-This enables flexible testing while maintaining production security standards! 🧪✅
+This provides flexible access levels while maintaining security! 🔑💡✅

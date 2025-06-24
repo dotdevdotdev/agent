@@ -4,7 +4,7 @@ Application settings and configuration
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from pydantic_settings import BaseSettings
 from pydantic import Field
@@ -44,6 +44,30 @@ class Settings(BaseSettings):
     # Job Management
     MAX_CONCURRENT_JOBS: int = Field(default=3, description="Maximum concurrent jobs")
     JOB_TIMEOUT: int = Field(default=7200, description="Job timeout in seconds")
+
+    # Admin Configuration
+    ADMIN_USERS: str = Field(
+        default="", description="Comma-separated list of GitHub usernames with admin privileges"
+    )
+    
+    # Validation Configuration
+    GENERAL_QUESTION_MIN_SCORE: int = Field(
+        default=30, description="Minimum validation score for general questions"
+    )
+    STANDARD_MIN_SCORE: int = Field(
+        default=50, description="Minimum validation score for code-related tasks"
+    )
+
+    @property
+    def admin_users_list(self) -> List[str]:
+        """Get admin users as a list"""
+        if not self.ADMIN_USERS:
+            return []
+        return [user.strip() for user in self.ADMIN_USERS.split(",") if user.strip()]
+    
+    def is_admin_user(self, username: str) -> bool:
+        """Check if a user is an admin"""
+        return username in self.admin_users_list
 
     class Config:
         env_file = ".env"

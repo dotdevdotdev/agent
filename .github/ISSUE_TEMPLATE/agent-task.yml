@@ -8,6 +8,8 @@ body:
       value: |
         ## Task Submission Form
         Please fill out the details below to queue a new task for the AI agent.
+        
+        **💡 Tip**: For general questions, you can use simpler validation requirements. The agent can answer questions about programming concepts, best practices, architecture advice, etc.
 
   - type: dropdown
     id: task-type
@@ -74,6 +76,7 @@ body:
         - "Documentation updates"
         - "Implementation plan"
         - "Bug fix with tests"
+        - "General response"
       default: 0
 
   - type: checkboxes

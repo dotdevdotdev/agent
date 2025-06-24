@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 from pathlib import Path
 
 from .issue_parser import ParsedTask, TaskType, TaskPriority
+from config.settings import settings
 
 logger = structlog.get_logger()
 
@@ -82,19 +83,36 @@ class TaskValidator:
         suggestions = self.suggest_improvements(task)
         validation_result['suggestions'] = suggestions
 
-        # Final validation - respect testing mode for minimum score
-        min_score = 25 if task.testing_mode else 50
+        # Check if user is admin
+        is_admin = settings.is_admin_user(task.issue_author)
         
-        if validation_result['completeness_score'] < min_score:
-            validation_result['is_valid'] = False
-            validation_result['errors'].append(
-                f"Task completeness score too low: {validation_result['completeness_score']}/100 (minimum: {min_score})"
-            )
+        # Determine minimum score based on task type
+        if task.task_type == TaskType.QUESTION:
+            min_score = settings.GENERAL_QUESTION_MIN_SCORE
+        else:
+            min_score = settings.STANDARD_MIN_SCORE
         
-        # Add testing mode info to feedback if enabled
-        if task.testing_mode:
+        # Admin override logic
+        if is_admin:
             validation_result['warnings'] = validation_result.get('warnings', [])
-            validation_result['warnings'].append("⚠️ Testing mode enabled - reduced validation requirements")
+            validation_result['warnings'].append("🔑 Admin user detected - validation requirements can be overridden")
+            # Admins see validation but are not blocked by it
+            if validation_result['completeness_score'] < min_score:
+                validation_result['warnings'].append(
+                    f"⚠️ Score below threshold ({validation_result['completeness_score']}/100 < {min_score}) but admin override allows processing"
+                )
+        else:
+            # Regular users must meet minimum score
+            if validation_result['completeness_score'] < min_score:
+                validation_result['is_valid'] = False
+                validation_result['errors'].append(
+                    f"Task completeness score too low: {validation_result['completeness_score']}/100 (minimum: {min_score})"
+                )
+        
+        # Add mode-specific feedback
+        if task.task_type == TaskType.QUESTION:
+            validation_result['warnings'] = validation_result.get('warnings', [])
+            validation_result['warnings'].append("💡 General question mode - lower validation threshold applied")
 
         # Generate feedback message
         validation_result['feedback'] = self._generate_feedback_message(validation_result, task)
@@ -331,13 +349,11 @@ class TaskValidator:
         """Check if task is ready for agent processing"""
         validation_result = self.validate_task_completeness(task)
         
-        # In testing mode, allow processing even with some validation issues
-        if task.testing_mode:
-            # In testing mode, we're more lenient - only block for critical errors
-            critical_errors = [error for error in validation_result.get('errors', []) 
-                             if 'score too low' not in error.lower() and 'acknowledgement' not in error.lower()]
-            
-            # Allow processing if validation score meets testing threshold and no critical errors
-            return validation_result['is_valid'] or len(critical_errors) == 0
+        # Admin users can override validation failures, otherwise use normal validation
+        is_admin = settings.is_admin_user(task.issue_author)
+        
+        if is_admin:
+            # Admin can process even with validation errors (they see warnings but aren't blocked)
+            return True
         
         return validation_result['is_valid'] and not validation_result['has_errors']

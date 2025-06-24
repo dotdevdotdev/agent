@@ -117,7 +117,6 @@ class PromptBuilder:
                 metadata={
                     "task_type": task.task_type,
                     "task_priority": task.priority,
-                    "testing_mode": task.testing_mode,
                     "repository": context.repository_name,
                     "issue_number": context.issue_number,
                     "files_analyzed": len(enriched_context.file_contents)
@@ -153,12 +152,6 @@ class PromptBuilder:
         }
         
         template = task_type_mapping.get(task.task_type, PromptTemplate.GENERAL_ASSISTANCE)
-        
-        # Special handling for testing mode
-        if task.testing_mode:
-            # Use simpler templates for testing
-            if template in [PromptTemplate.CODE_ANALYSIS, PromptTemplate.BUG_INVESTIGATION]:
-                template = PromptTemplate.GENERAL_ASSISTANCE
         
         return template
 
@@ -213,7 +206,6 @@ class PromptBuilder:
             "relevant_files": self._format_file_list(task.relevant_files),
             "file_contents": self._format_file_contents(context.file_contents),
             "repository_structure": self._format_repository_structure(context.repository_structure),
-            "testing_mode": "**TESTING MODE ACTIVE**" if task.testing_mode else "",
             "estimated_complexity": task.estimated_complexity or "Unknown"
         }
         
@@ -335,7 +327,7 @@ class PromptBuilder:
     def _get_code_analysis_template(self) -> str:
         return """# Code Analysis Request
 
-{testing_mode}
+
 
 ## Task Details
 - **Repository**: {repository_name}
@@ -371,7 +363,7 @@ If you find issues, please provide specific recommendations with code examples w
     def _get_feature_implementation_template(self) -> str:
         return """# Feature Implementation Request
 
-{testing_mode}
+
 
 ## Task Details
 - **Repository**: {repository_name}
@@ -408,7 +400,7 @@ Please provide the complete implementation with explanations for key decisions."
     def _get_bug_investigation_template(self) -> str:
         return """# Bug Investigation Request
 
-{testing_mode}
+
 
 ## Task Details
 - **Repository**: {repository_name}
@@ -445,7 +437,7 @@ Please provide a detailed analysis with reproduction steps and recommended fixes
     def _get_refactoring_template(self) -> str:
         return """# Code Refactoring Request
 
-{testing_mode}
+
 
 ## Task Details
 - **Repository**: {repository_name}
@@ -482,7 +474,7 @@ Please provide the refactored code with explanations for the changes made."""
     def _get_documentation_template(self) -> str:
         return """# Documentation Request
 
-{testing_mode}
+
 
 ## Task Details
 - **Repository**: {repository_name}
@@ -518,7 +510,7 @@ Please provide well-structured documentation in appropriate format (Markdown, et
     def _get_testing_template(self) -> str:
         return """# Testing Request
 
-{testing_mode}
+
 
 ## Task Details
 - **Repository**: {repository_name}
@@ -554,7 +546,7 @@ Please provide well-structured test code with explanations."""
     def _get_general_assistance_template(self) -> str:
         return """# General Assistance Request
 
-{testing_mode}
+
 
 ## Task Details
 - **Repository**: {repository_name}
@@ -601,3 +593,37 @@ Please provide a comprehensive and helpful response."""
 {file_contents}
 
 Please provide assistance with this request."""
+
+    def build_simple_question_prompt(self, context: 'PromptContext') -> 'BuiltPrompt':
+        """Build a simple prompt for general questions without file context"""
+        
+        # Simple template for general questions
+        template = """# General Question
+
+## Question
+{prompt}
+
+## Additional Context
+{context}
+
+Please provide a helpful and comprehensive answer to this question. 
+Focus on clarity, accuracy, and practical guidance.
+"""
+        
+        # Build the prompt
+        formatted_prompt = template.format(
+            prompt=context.prompt,
+            context=context.context if context.context else "No additional context provided."
+        )
+        
+        return BuiltPrompt(
+            prompt=formatted_prompt,
+            template_used=PromptTemplate.GENERAL_ASSISTANCE,
+            context_files=[],
+            estimated_tokens=len(formatted_prompt.split()) * 1.3,  # Rough estimate
+            truncated=False,
+            metadata={
+                "is_simple_question": True,
+                "no_files_included": True
+            }
+        )

@@ -14,6 +14,7 @@ from .agent_state_machine import AgentStateMachine, AgentState
 from .issue_parser import IssueParser
 from .task_validator import TaskValidator
 from .processing_orchestrator import ProcessingOrchestrator
+from .issue_parser import TaskType, OutputFormat as IssueOutputFormat
 
 logger = structlog.get_logger()
 
@@ -106,7 +107,8 @@ class IssueEventProcessor(EventProcessor):
 
         try:
             # Parse the issue
-            parsed_task = self.issue_parser.parse_issue(issue_body, issue_title)
+            issue_author = issue.get('user', {}).get('login', '')
+            parsed_task = self.issue_parser.parse_issue(issue_body, issue_title, issue_author)
             
             # Validate the task
             validation_result = self.task_validator.validate_task_completeness(parsed_task)
@@ -263,14 +265,32 @@ class IssueEventProcessor(EventProcessor):
                 await self.job_manager.update_job_progress(job_id, progress, message)
                 logger.info("Processing progress", job_id=job_id, progress=progress, message=message)
             
-            # Execute the complete processing workflow
-            result_context = await self.processing_orchestrator.process_issue(
-                job_id=job_id,
-                repository=job.repository_full_name,
-                issue_number=job.issue_number,
-                parsed_task=parsed_task,
-                progress_callback=progress_callback
+            # Choose processing method based on task type and output format
+            is_general_question = (
+                parsed_task.task_type == TaskType.QUESTION or 
+                parsed_task.output_format == IssueOutputFormat.GENERAL_RESPONSE
             )
+            
+            if is_general_question:
+                # Use simplified workflow for general questions
+                logger.info("Using simplified workflow for general question", job_id=job_id)
+                result_context = await self.processing_orchestrator.process_general_question(
+                    job_id=job_id,
+                    repository=job.repository_full_name,
+                    issue_number=job.issue_number,
+                    parsed_task=parsed_task,
+                    progress_callback=progress_callback
+                )
+            else:
+                # Use full workflow for code-related tasks
+                logger.info("Using full workflow for code-related task", job_id=job_id)
+                result_context = await self.processing_orchestrator.process_issue(
+                    job_id=job_id,
+                    repository=job.repository_full_name,
+                    issue_number=job.issue_number,
+                    parsed_task=parsed_task,
+                    progress_callback=progress_callback
+                )
             
             # Update job with final results
             final_result = {

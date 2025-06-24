@@ -409,3 +409,95 @@ Please focus your analysis on the specified files."""
                 "active_executions": len(self.active_processes),
                 "total_executions": len(self.execution_history)
             }
+
+    async def execute_simple_prompt(self,
+                                   prompt: str,
+                                   execution_id: str = None,
+                                   timeout: int = None) -> ClaudeExecutionResult:
+        """Execute a simple prompt without worktree context for general questions"""
+        execution_id = execution_id or f"simple-{datetime.now().isoformat()}"
+        timeout = timeout or self.default_timeout
+        
+        logger.info("Starting simple prompt execution", execution_id=execution_id)
+        
+        result = ClaudeExecutionResult(
+            status=ClaudeProcessStatus.PENDING,
+            command=[self.cli_path],
+            working_directory="",  # No specific working directory
+            started_at=datetime.now()
+        )
+        
+        try:
+            # Create a temporary file for the prompt
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+                f.write(prompt)
+                prompt_file = f.name
+            
+            try:
+                # Execute Claude with the prompt
+                result.status = ClaudeProcessStatus.RUNNING
+                
+                # Simple Claude execution - just ask the question
+                process_result = await asyncio.create_subprocess_exec(
+                    self.cli_path,
+                    prompt,  # Direct prompt as argument
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                
+                # Wait for completion with timeout
+                stdout, stderr = await asyncio.wait_for(
+                    process_result.communicate(), 
+                    timeout=timeout
+                )
+                
+                result.stdout = stdout.decode('utf-8', errors='replace')
+                result.stderr = stderr.decode('utf-8', errors='replace')
+                result.return_code = process_result.returncode
+                result.completed_at = datetime.now()
+                result.execution_time = (result.completed_at - result.started_at).total_seconds()
+                
+                if result.return_code == 0:
+                    result.status = ClaudeProcessStatus.COMPLETED
+                else:
+                    result.status = ClaudeProcessStatus.FAILED
+                    result.error_type = self._classify_error(result.stderr)
+                    result.error_message = result.stderr
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(prompt_file)
+                except:
+                    pass
+                    
+        except asyncio.TimeoutError:
+            result.status = ClaudeProcessStatus.TIMEOUT
+            result.error_type = ClaudeError.TIMEOUT
+            result.error_message = f"Execution timed out after {timeout} seconds"
+            result.completed_at = datetime.now()
+            result.execution_time = timeout
+            
+        except Exception as e:
+            result.status = ClaudeProcessStatus.FAILED
+            result.error_type = ClaudeError.UNKNOWN_ERROR
+            result.error_message = str(e)
+            result.completed_at = datetime.now()
+            result.execution_time = (result.completed_at - result.started_at).total_seconds()
+        
+        # Store in execution history
+        self.execution_history.append(result)
+        
+        # Limit history size
+        if len(self.execution_history) > 100:
+            self.execution_history = self.execution_history[-50:]
+        
+        logger.info(
+            "Simple prompt execution completed",
+            execution_id=execution_id,
+            status=result.status,
+            execution_time=result.execution_time,
+            return_code=result.return_code
+        )
+        
+        return result

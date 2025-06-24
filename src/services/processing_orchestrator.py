@@ -12,7 +12,7 @@ from enum import Enum
 from .worktree_manager import WorktreeManager, WorktreeSession, WorktreeStatus
 from .prompt_builder import PromptBuilder, PromptContext, BuiltPrompt
 from .result_processor import ResultProcessor, ParsedResult, GitHubOutput, OutputFormat
-from .issue_parser import ParsedTask
+from .issue_parser import ParsedTask, TaskType, OutputFormat as IssueOutputFormat
 from .github_client import GitHubClient
 from .agent_state_machine import AgentStateMachine, AgentState
 
@@ -138,6 +138,51 @@ class ProcessingOrchestrator:
                 logger.error("Cleanup failed", job_id=job_id, error=str(cleanup_error))
             
             raise ProcessingOrchestratorError(f"Processing failed: {str(e)}", context, context.stage)
+        
+        finally:
+            # Remove from active contexts
+            if job_id in self.active_contexts:
+                del self.active_contexts[job_id]
+
+    async def process_general_question(self,
+                                     job_id: str,
+                                     repository: str,
+                                     issue_number: int,
+                                     parsed_task: ParsedTask,
+                                     progress_callback: Callable[[str, int], None] = None) -> ProcessingContext:
+        """Simplified processing workflow for general questions (no git worktree needed)"""
+        
+        context = ProcessingContext(
+            job_id=job_id,
+            repository=repository,
+            issue_number=issue_number,
+            parsed_task=parsed_task
+        )
+        
+        self.active_contexts[job_id] = context
+        
+        try:
+            # Stage 1: Build simple prompt for general question
+            await self._stage_build_simple_prompt(context, progress_callback)
+            
+            # Stage 2: Execute Claude for text response only
+            await self._stage_execute_claude_simple(context, progress_callback)
+            
+            # Stage 3: Process text-only results
+            await self._stage_process_simple_results(context, progress_callback)
+            
+            # Stage 4: Post response to GitHub
+            await self._stage_post_simple_response(context, progress_callback)
+            
+            # Stage 5: Complete processing
+            await self._stage_complete_simple(context, progress_callback)
+            
+            return context
+            
+        except Exception as e:
+            context.error_message = str(e)
+            logger.error("General question processing failed", error=str(e), job_id=job_id)
+            raise ProcessingOrchestratorError(f"General question processing failed: {str(e)}", context, context.stage)
         
         finally:
             # Remove from active contexts
@@ -499,3 +544,144 @@ class ProcessingOrchestrator:
                 "error": str(e),
                 "active_processing": len(self.active_contexts)
             }
+
+    # Simple processing stages for general questions
+    
+    async def _stage_build_simple_prompt(self,
+                                       context: ProcessingContext,
+                                       progress_callback: Callable[[str, int], None] = None) -> None:
+        """Build simple prompt for general questions without file context"""
+        context.stage = ProcessingStage.BUILDING_PROMPT
+        
+        if progress_callback:
+            progress_callback("Building prompt for general question...", 20)
+        
+        # Create minimal prompt context
+        context.prompt_context = PromptContext(
+            task_type=context.parsed_task.task_type,
+            prompt=context.parsed_task.prompt,
+            context=context.parsed_task.context,
+            file_contents={},  # No files for general questions
+            repository_structure=[],
+            metadata={
+                "is_general_question": True,
+                "output_format": context.parsed_task.output_format
+            }
+        )
+        
+        # Build the prompt
+        context.built_prompt = self.prompt_builder.build_simple_question_prompt(
+            context.prompt_context
+        )
+        
+        logger.info("Simple prompt built", job_id=context.job_id, prompt_length=len(context.built_prompt.prompt))
+
+    async def _stage_execute_claude_simple(self,
+                                         context: ProcessingContext,
+                                         progress_callback: Callable[[str, int], None] = None) -> None:
+        """Execute Claude CLI for simple text response"""
+        context.stage = ProcessingStage.EXECUTING_CLAUDE
+        
+        if progress_callback:
+            progress_callback("Generating response...", 60)
+        
+        # Execute Claude with simple prompt - no worktree needed
+        execution_result = await self.worktree_manager.claude_service.execute_simple_prompt(
+            context.built_prompt.prompt,
+            execution_id=f"simple-{context.job_id}"
+        )
+        
+        context.metadata["claude_execution"] = {
+            "status": execution_result.status,
+            "execution_time": execution_result.execution_time,
+            "return_code": execution_result.return_code,
+            "stdout": execution_result.stdout,
+            "stderr": execution_result.stderr
+        }
+        
+        logger.info("Simple Claude execution completed", 
+                   job_id=context.job_id, 
+                   status=execution_result.status,
+                   execution_time=execution_result.execution_time)
+
+    async def _stage_process_simple_results(self,
+                                          context: ProcessingContext,
+                                          progress_callback: Callable[[str, int], None] = None) -> None:
+        """Process simple text results"""
+        context.stage = ProcessingStage.PROCESSING_RESULTS
+        
+        if progress_callback:
+            progress_callback("Processing response...", 80)
+        
+        # Get the Claude execution result
+        claude_result = context.metadata.get("claude_execution", {})
+        
+        # Create simple parsed result for text response
+        context.parsed_result = ParsedResult(
+            confidence_score=95,  # High confidence for simple questions
+            summary="General question answered",
+            has_code_changes=False,
+            has_new_files=False,
+            output_format=OutputFormat.THREADED_COMMENTS,
+            raw_output=claude_result.get("stdout", ""),
+            metadata={
+                "is_general_response": True,
+                "execution_time": claude_result.get("execution_time", 0)
+            }
+        )
+        
+        # Generate GitHub-formatted output
+        context.github_output = self.result_processor.format_simple_response(
+            context.parsed_result,
+            context.parsed_task
+        )
+        
+        logger.info("Simple results processed", job_id=context.job_id)
+
+    async def _stage_post_simple_response(self,
+                                        context: ProcessingContext,
+                                        progress_callback: Callable[[str, int], None] = None) -> None:
+        """Post simple response to GitHub"""
+        context.stage = ProcessingStage.POSTING_TO_GITHUB
+        
+        if progress_callback:
+            progress_callback("Posting response to GitHub...", 90)
+        
+        # Post the response as a comment
+        await self.github_client.post_threaded_comments(
+            context.repository,
+            context.issue_number,
+            context.github_output.threaded_comments,
+            context.job_id
+        )
+        
+        # Update labels to indicate completion
+        await self.github_client.update_issue_labels(
+            context.repository,
+            context.issue_number,
+            add_labels=["agent:completed"],
+            remove_labels=["agent:in-progress", "agent:queued"]
+        )
+        
+        logger.info("Simple response posted to GitHub", job_id=context.job_id)
+
+    async def _stage_complete_simple(self,
+                                   context: ProcessingContext,
+                                   progress_callback: Callable[[str, int], None] = None) -> None:
+        """Complete simple processing"""
+        context.stage = ProcessingStage.COMPLETING
+        context.completed_at = datetime.now()
+        
+        if progress_callback:
+            progress_callback("✅ General question answered!", 100)
+        
+        # Update state machine
+        if self.state_machine:
+            await self.state_machine.transition_to(
+                context.job_id, AgentState.COMPLETED,
+                user_message="✅ General question answered successfully!"
+            )
+        
+        logger.info("Simple processing completed", 
+                   job_id=context.job_id,
+                   total_time=(context.completed_at - context.started_at).total_seconds())
