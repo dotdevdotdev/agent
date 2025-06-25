@@ -14,6 +14,7 @@ from .agent_state_machine import AgentStateMachine, AgentState
 from .issue_parser import IssueParser
 from .task_validator import TaskValidator
 from .processing_orchestrator import ProcessingOrchestrator
+from .worktree_manager import WorktreeStatus
 from .issue_parser import TaskType, OutputFormat as IssueOutputFormat
 
 logger = structlog.get_logger()
@@ -104,6 +105,24 @@ class IssueEventProcessor(EventProcessor):
 
         if not is_agent_task:
             return {"status": "ignored", "reason": "Not an agent task"}
+
+        # Check if a job already exists for this issue to prevent duplicates
+        existing_jobs = await self.job_manager.list_jobs()
+        for existing_job in existing_jobs:
+            if (existing_job.repository_full_name == repo_full_name and 
+                existing_job.issue_number == issue_number and
+                existing_job.status in ['pending', 'running']):
+                logger.info(
+                    "Job already exists for this issue",
+                    job_id=existing_job.job_id,
+                    issue=issue_number,
+                    status=existing_job.status
+                )
+                return {
+                    "status": "duplicate_job_prevented",
+                    "job_id": existing_job.job_id,
+                    "message": "Job already exists for this issue"
+                }
 
         try:
             # Parse the issue
@@ -264,6 +283,17 @@ class IssueEventProcessor(EventProcessor):
             async def progress_callback(message: str, progress: int):
                 await self.job_manager.update_job_progress(job_id, progress, message)
                 logger.info("Processing progress", job_id=job_id, progress=progress, message=message)
+                
+                # Save worktree info during processing for recovery
+                if hasattr(self.processing_orchestrator, 'active_contexts') and job_id in self.processing_orchestrator.active_contexts:
+                    context = self.processing_orchestrator.active_contexts[job_id]
+                    if context.session and context.session.worktree_info:
+                        worktree_info = self._extract_worktree_info(context)
+                        if worktree_info:
+                            # Update job metadata with current worktree info
+                            job = await self.job_manager.get_job(job_id)
+                            if job and job.metadata:
+                                job.metadata["current_worktree_info"] = worktree_info
             
             # Choose processing method based on task type and output format
             is_general_question = (
@@ -292,14 +322,15 @@ class IssueEventProcessor(EventProcessor):
                     progress_callback=progress_callback
                 )
             
-            # Update job with final results
+            # Update job with final results including worktree information
             final_result = {
                 "message": "Task processed successfully using Claude Code CLI",
                 "result_type": result_context.parsed_result.result_type.value if result_context.parsed_result else "unknown",
                 "confidence_score": result_context.parsed_result.confidence_score if result_context.parsed_result else 0,
                 "code_changes_count": len(result_context.parsed_result.code_changes) if result_context.parsed_result else 0,
                 "recommendations_count": len(result_context.parsed_result.recommendations) if result_context.parsed_result else 0,
-                "processing_metadata": result_context.metadata
+                "processing_metadata": result_context.metadata,
+                "worktree_info": self._extract_worktree_info(result_context) if result_context.session else None
             }
             
             await self.job_manager.update_job_status(
@@ -338,6 +369,27 @@ class IssueEventProcessor(EventProcessor):
             logger.info("Job restarted", job_id=job_id)
         except Exception as e:
             logger.error("Failed to restart job", job_id=job_id, error=str(e))
+
+    def _extract_worktree_info(self, result_context) -> Dict[str, Any]:
+        """Extract worktree information for job recovery"""
+        if not result_context.session or not result_context.session.worktree_info:
+            return None
+        
+        worktree_info = result_context.session.worktree_info
+        session = result_context.session
+        
+        return {
+            "job_id": session.job_id,
+            "worktree_path": str(worktree_info.worktree_path),
+            "branch_name": worktree_info.branch_name,
+            "base_commit": worktree_info.base_commit,
+            "status": session.status.value,
+            "created_at": session.created_at.isoformat(),
+            "files_modified": session.files_modified,
+            "files_created": session.files_created,
+            "commits_made": session.commits_made,
+            "can_recover": session.status in [WorktreeStatus.READY, WorktreeStatus.PROCESSING, WorktreeStatus.COMPLETED]
+        }
 
 
 class CommentEventProcessor(EventProcessor):
@@ -496,7 +548,14 @@ class EventRouter:
         if event_type == "issues":
             issue_id = payload.get('issue', {}).get('id')
             action = payload.get('action')
-            return f"{event_type}:{action}:{issue_id}"
+            repo_id = payload.get('repository', {}).get('id')
+            
+            # For issue events that might create jobs, use issue-based fingerprint
+            # to prevent multiple job creation attempts for the same issue
+            if action in ['opened', 'labeled', 'reopened']:
+                return f"issue_job_creation:{repo_id}:{issue_id}"
+            else:
+                return f"{event_type}:{action}:{issue_id}"
             
         elif event_type == "issue_comment":
             comment_id = payload.get('comment', {}).get('id')

@@ -482,3 +482,42 @@ class GitHubClient:
         except Exception as e:
             logger.error("Failed to get current agent state", error=str(e))
             return None
+
+    async def get_agent_issues(self, repo_full_name: str, state: str = "open") -> List[Dict[str, Any]]:
+        """Get all issues with agent labels"""
+        try:
+            # Search for issues with agent labels
+            url = f"{settings.GITHUB_API_URL}/search/issues"
+            params = {
+                "q": f"repo:{repo_full_name} is:issue is:{state} label:agent:*",
+                "sort": "updated",
+                "order": "desc",
+                "per_page": 100
+            }
+            
+            response = await self._make_request("GET", url, params=params)
+            issues = response.get("items", [])
+            
+            logger.info(f"Found {len(issues)} agent issues in {repo_full_name}")
+            return issues
+            
+        except Exception as e:
+            logger.error("Failed to get agent issues", error=str(e), repo=repo_full_name)
+            return []
+
+    async def get_issue_with_agent_state(self, repo_full_name: str, issue_number: int) -> Optional[Dict[str, Any]]:
+        """Get issue details with current agent state"""
+        try:
+            issue = await self.get_issue(repo_full_name, issue_number)
+            if not issue:
+                return None
+                
+            # Add agent state to issue data
+            agent_state = await self.get_current_agent_state(repo_full_name, issue_number)
+            issue["agent_state"] = agent_state
+            
+            return issue
+            
+        except Exception as e:
+            logger.error("Failed to get issue with agent state", error=str(e))
+            return None

@@ -38,6 +38,10 @@ class PromptContext:
     repository_structure: List[str] = field(default_factory=list)
     recent_commits: List[str] = field(default_factory=list)
     related_issues: List[str] = field(default_factory=list)
+    # Worktree recovery context
+    worktree_info: Optional[Dict[str, Any]] = None
+    is_recovery_job: bool = False
+    previous_progress: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -206,7 +210,8 @@ class PromptBuilder:
             "relevant_files": self._format_file_list(task.relevant_files),
             "file_contents": self._format_file_contents(context.file_contents),
             "repository_structure": self._format_repository_structure(context.repository_structure),
-            "estimated_complexity": task.estimated_complexity or "Unknown"
+            "estimated_complexity": task.estimated_complexity or "Unknown",
+            "worktree_context": self._format_worktree_context(context)
         }
         
         # Apply template substitution
@@ -350,6 +355,8 @@ class PromptBuilder:
 ## Repository Overview
 {repository_structure}
 
+{worktree_context}
+
 ## Instructions
 Please provide a comprehensive code analysis focusing on:
 1. Code quality and best practices
@@ -385,6 +392,8 @@ If you find issues, please provide specific recommendations with code examples w
 
 ## Repository Overview
 {repository_structure}
+
+{worktree_context}
 
 ## Implementation Guidelines
 Please implement the requested feature following these principles:
@@ -423,6 +432,8 @@ Please provide the complete implementation with explanations for key decisions."
 ## Repository Overview
 {repository_structure}
 
+{worktree_context}
+
 ## Investigation Approach
 Please investigate this bug systematically:
 1. Analyze the reported symptoms
@@ -460,6 +471,8 @@ Please provide a detailed analysis with reproduction steps and recommended fixes
 ## Repository Overview
 {repository_structure}
 
+{worktree_context}
+
 ## Refactoring Guidelines
 Please refactor the code with these objectives:
 1. Improve code clarity and readability
@@ -495,6 +508,8 @@ Please provide the refactored code with explanations for the changes made."""
 
 ## Repository Overview
 {repository_structure}
+
+{worktree_context}
 
 ## Documentation Guidelines
 Please create comprehensive documentation that:
@@ -532,6 +547,8 @@ Please provide well-structured documentation in appropriate format (Markdown, et
 ## Repository Overview
 {repository_structure}
 
+{worktree_context}
+
 ## Testing Guidelines
 Please create comprehensive tests that:
 1. Cover the main functionality and edge cases
@@ -568,6 +585,8 @@ Please provide well-structured test code with explanations."""
 ## Repository Overview
 {repository_structure}
 
+{worktree_context}
+
 ## Response Guidelines
 Please provide helpful assistance that:
 1. Directly addresses the question or request
@@ -593,6 +612,58 @@ Please provide a comprehensive and helpful response."""
 {file_contents}
 
 Please provide assistance with this request."""
+
+    def _format_worktree_context(self, context: PromptContext) -> str:
+        """Format worktree context information for templates"""
+        if not context.worktree_info and not context.is_recovery_job:
+            return ""
+        
+        sections = []
+        
+        if context.is_recovery_job:
+            sections.append("## ⚠️ RECOVERY JOB CONTEXT")
+            sections.append("This is a **recovery job** - you are resuming work from a previous interrupted session.")
+            
+            if context.worktree_info:
+                worktree = context.worktree_info
+                sections.append(f"**Previous worktree details:**")
+                sections.append(f"- Branch: `{worktree.get('branch_name', 'unknown')}`")
+                sections.append(f"- Worktree path: `{worktree.get('worktree_path', 'unknown')}`")
+                sections.append(f"- Status when interrupted: `{worktree.get('status', 'unknown')}`")
+                
+                if worktree.get('files_modified'):
+                    sections.append(f"- Files previously modified: {', '.join(worktree['files_modified'])}")
+                if worktree.get('files_created'):
+                    sections.append(f"- Files previously created: {', '.join(worktree['files_created'])}")
+                if worktree.get('commits_made'):
+                    sections.append(f"- Commits made: {len(worktree['commits_made'])} commits")
+            
+            if context.previous_progress:
+                progress = context.previous_progress
+                sections.append(f"**Previous progress:**")
+                sections.append(f"- Last stage: {progress.get('stage', 'unknown')}")
+                sections.append(f"- Progress: {progress.get('progress', 0)}%")
+                if progress.get('message'):
+                    sections.append(f"- Last message: {progress['message']}")
+            
+            sections.append("")
+            sections.append("**Recovery Instructions:**")
+            sections.append("1. **Check existing work** - Review any previous changes in the worktree")
+            sections.append("2. **Continue from where left off** - Don't start over, build on existing progress")
+            sections.append("3. **Validate previous work** - Ensure previous changes are correct before proceeding")
+            sections.append("4. **Complete the task** - Finish what was started in the previous session")
+            sections.append("")
+        
+        # Add general worktree awareness instructions
+        sections.append("## 🔧 WORKTREE ENVIRONMENT")
+        sections.append("You are working in an **isolated git worktree** for this issue:")
+        sections.append("- This is a separate working directory from the main repository")
+        sections.append("- Changes made here won't affect the main branch until explicitly merged")
+        sections.append("- The worktree will be cleaned up automatically after task completion")
+        sections.append("- You can freely create, modify, and delete files as needed")
+        sections.append("")
+        
+        return "\n".join(sections)
 
     def build_simple_question_prompt(self, context: 'PromptContext', task: ParsedTask) -> 'BuiltPrompt':
         """Build a simple prompt for general questions without file context"""

@@ -228,7 +228,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.CREATING_WORKTREE
         
         if progress_callback:
-            progress_callback("Creating isolated worktree for processing...", 10)
+            await progress_callback("Creating isolated worktree for processing...", 10)
         
         # Update state machine
         if self.state_machine:
@@ -257,7 +257,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.BUILDING_PROMPT
         
         if progress_callback:
-            progress_callback("Building optimized prompt for Claude Code CLI...", 25)
+            await progress_callback("Building optimized prompt for Claude Code CLI...", 25)
         
         # Create prompt context with agent configuration
         context.prompt_context = PromptContext(
@@ -281,13 +281,19 @@ class ProcessingOrchestrator:
             context.agent_config, agent_context
         )
         
-        # Build the prompt with agent-specific configuration
-        context.built_prompt = await self.prompt_builder.build_prompt_with_agent(
+        # Build the prompt with standard method
+        context.built_prompt = await self.prompt_builder.build_prompt(
             context.parsed_task,
-            context.prompt_context,
-            enhanced_system_prompt,
-            agent_context_files
+            context.prompt_context
         )
+        
+        # Enhance with agent-specific system prompt
+        original_prompt = context.built_prompt.prompt
+        enhanced_prompt = f"{enhanced_system_prompt}\n\n{original_prompt}"
+        
+        # Update the built prompt with enhanced content
+        context.built_prompt.prompt = enhanced_prompt
+        context.built_prompt.context_files.extend(agent_context_files)
         
         # Store metadata
         context.metadata.update({
@@ -312,12 +318,12 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.EXECUTING_CLAUDE
         
         if progress_callback:
-            progress_callback("Executing Claude Code CLI analysis...", 40)
+            await progress_callback("Executing Claude Code CLI analysis...", 40)
         
-        # Update state machine
+        # Update state machine to IN_PROGRESS (proper transition from ANALYZING)
         if self.state_machine:
             await self.state_machine.transition_to(
-                context.job_id, AgentState.IMPLEMENTING,
+                context.job_id, AgentState.IN_PROGRESS,
                 user_message="Running Claude Code CLI analysis..."
             )
         
@@ -355,7 +361,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.PROCESSING_RESULTS
         
         if progress_callback:
-            progress_callback("Processing Claude CLI results...", 60)
+            await progress_callback("Processing Claude CLI results...", 60)
         
         # Get the Claude execution result
         claude_result = context.session.claude_results[0]
@@ -392,7 +398,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.POSTING_TO_GITHUB
         
         if progress_callback:
-            progress_callback("Posting results to GitHub...", 75)
+            await progress_callback("Posting results to GitHub...", 75)
         
         # Determine output format based on results
         output_format = self._determine_output_format(context.parsed_result)
@@ -437,7 +443,7 @@ class ProcessingOrchestrator:
             context.github_output.format_type == OutputFormat.PULL_REQUEST):
             
             if progress_callback:
-                progress_callback("Committing code changes...", 85)
+                await progress_callback("Committing code changes...", 85)
             
             commit_message = f"Agent: {context.parsed_result.summary}"
             commit_hash = await self.worktree_manager.commit_changes(
@@ -460,7 +466,7 @@ class ProcessingOrchestrator:
         context.stage = ProcessingStage.COMPLETING
         
         if progress_callback:
-            progress_callback("Completing processing...", 95)
+            await progress_callback("Completing processing...", 95)
         
         # Complete the worktree session
         completed_session = await self.worktree_manager.complete_session(context.job_id)
@@ -480,7 +486,7 @@ class ProcessingOrchestrator:
         await self._stage_cleanup(context)
         
         if progress_callback:
-            progress_callback("Processing completed successfully!", 100)
+            await progress_callback("Processing completed successfully!", 100)
         
         logger.info(
             "Processing completed",

@@ -2,7 +2,7 @@ name: 🤖 Agent Task Dispatcher
 
 on:
   issues:
-    types: [opened, labeled, closed]
+    types: [labeled, closed]
   issue_comment:
     types: [created]
 
@@ -10,7 +10,6 @@ jobs:
   dispatch-to-agent:
     runs-on: ubuntu-latest
     if: |
-      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'agent:queued')) ||
       (github.event.action == 'labeled' && github.event.label.name == 'agent:queued') ||
       (github.event.action == 'created' && contains(github.event.issue.labels.*.name, 'agent:in-progress'))
 
@@ -60,6 +59,10 @@ jobs:
             -H "User-Agent: GitHub-Hookshot/agent-dispatcher" \
             -d "$payload" \
             --fail-with-body
+
+      - name: Checkout repository for gh CLI
+        if: failure()
+        uses: actions/checkout@v4
 
       - name: Handle Webhook Failure
         if: failure()

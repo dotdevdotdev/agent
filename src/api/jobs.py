@@ -8,30 +8,48 @@ import structlog
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
-from src.models.jobs import JobResponse, JobStatus
-from src.services.job_manager import JobManager
+from src.models.jobs import JobResponse, JobStatus, JobHistoryEntry
+from src.services.shared_services import get_job_manager
 
 router = APIRouter()
 logger = structlog.get_logger()
-job_manager = JobManager()
 
 
-@router.get("/{job_id}", response_model=JobResponse)
-async def get_job_status(job_id: str) -> JobResponse:
+@router.get("/history", response_model=List[JobHistoryEntry])
+async def get_job_history(
+    status: Optional[JobStatus] = Query(None, description="Filter by job status"),
+    limit: int = Query(
+        100, ge=1, le=500, description="Maximum number of history entries to return"
+    ),
+    offset: int = Query(0, ge=0, description="Number of entries to skip"),
+) -> List[JobHistoryEntry]:
     """
-    Get the status of a specific job
+    Get job history with optional filtering by status
     """
     try:
-        job = await job_manager.get_job(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+        job_manager = get_job_manager()
+        history = await job_manager.get_job_history(
+            status=status, limit=limit, offset=offset
+        )
+        return history
 
-        return job
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error("Failed to get job status", job_id=job_id, error=str(e))
+        logger.error("Failed to get job history", error=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/statistics")
+async def get_job_statistics() -> JSONResponse:
+    """
+    Get job statistics and metrics
+    """
+    try:
+        job_manager = get_job_manager()
+        stats = await job_manager.get_job_statistics()
+        return JSONResponse(content=stats)
+
+    except Exception as e:
+        logger.error("Failed to get job statistics", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -47,11 +65,32 @@ async def list_jobs(
     List jobs with optional filtering
     """
     try:
+        job_manager = get_job_manager()
         jobs = await job_manager.list_jobs(status=status, limit=limit, offset=offset)
         return jobs
 
     except Exception as e:
         logger.error("Failed to list jobs", error=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{job_id}", response_model=JobResponse)
+async def get_job_status(job_id: str) -> JobResponse:
+    """
+    Get the status of a specific job
+    """
+    try:
+        job_manager = get_job_manager()
+        job = await job_manager.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        return job
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get job status", job_id=job_id, error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -61,6 +100,7 @@ async def cancel_job(job_id: str) -> JSONResponse:
     Cancel a running or pending job
     """
     try:
+        job_manager = get_job_manager()
         success = await job_manager.cancel_job(job_id)
         if not success:
             raise HTTPException(
@@ -85,6 +125,7 @@ async def get_job_logs(job_id: str) -> JSONResponse:
     Get logs for a specific job
     """
     try:
+        job_manager = get_job_manager()
         logs = await job_manager.get_job_logs(job_id)
         if logs is None:
             raise HTTPException(status_code=404, detail="Job not found")

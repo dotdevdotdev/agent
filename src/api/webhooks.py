@@ -12,20 +12,11 @@ from fastapi.responses import JSONResponse
 
 from config.settings import settings
 from src.models.github import GitHubWebhookPayload
-from src.services.job_manager import JobManager
-from src.services.github_client import GitHubClient
-from src.services.agent_state_machine import AgentStateMachine
-from src.services.event_router import EventRouter
+from src.services.shared_services import get_event_router
 from src.utils.webhook_validator import validate_github_webhook
 
 router = APIRouter()
 logger = structlog.get_logger()
-
-# Initialize services
-job_manager = JobManager()
-github_client = GitHubClient()
-state_machine = AgentStateMachine(github_client, job_manager)
-event_router = EventRouter(github_client, job_manager, state_machine)
 
 
 async def verify_webhook_signature(request: Request) -> None:
@@ -68,6 +59,9 @@ async def github_webhook(
     )
 
     try:
+        # Get shared event router
+        event_router = get_event_router()
+        
         # Clean up event cache periodically
         if delivery_id.endswith('0'):  # Every ~10th event
             await event_router.cleanup_event_cache()
@@ -115,6 +109,7 @@ async def github_webhook(
 async def webhook_health() -> JSONResponse:
     """Health check for webhook service"""
     try:
+        event_router = get_event_router()
         stats = event_router.get_event_stats()
         return JSONResponse(content={
             "status": "healthy",

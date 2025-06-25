@@ -107,7 +107,7 @@ class WorktreeManager:
         
         try:
             if progress_callback:
-                progress_callback("Creating isolated git worktree...", 10)
+                await progress_callback("Creating isolated git worktree...", 10)
             
             # Create the git worktree
             worktree_info = self.git_service.create_worktree(
@@ -120,7 +120,7 @@ class WorktreeManager:
             session.status = WorktreeStatus.READY
             
             if progress_callback:
-                progress_callback("Worktree created successfully", 20)
+                await progress_callback("Worktree created successfully", 20)
             
             # Schedule automatic cleanup
             if self.auto_cleanup_enabled:
@@ -171,7 +171,7 @@ class WorktreeManager:
             session.started_processing_at = datetime.now()
             
             if session.progress_callback:
-                session.progress_callback("Starting Claude Code CLI analysis...", 30)
+                await session.progress_callback("Starting Claude Code CLI analysis...", 30)
             
             working_directory = str(session.worktree_info.path)
             execution_id = f"{job_id}_claude"
@@ -197,9 +197,9 @@ class WorktreeManager:
             
             if session.progress_callback:
                 if result.status.value == "completed":
-                    session.progress_callback("Claude analysis completed successfully", 60)
+                    await session.progress_callback("Claude analysis completed successfully", 60)
                 else:
-                    session.progress_callback(f"Claude analysis {result.status}", 50)
+                    await session.progress_callback(f"Claude analysis {result.status}", 50)
             
             logger.info(
                 "Claude processing completed",
@@ -254,7 +254,7 @@ class WorktreeManager:
                 session.files_created.extend(list(files_after - files_before))
                 
                 if session.progress_callback:
-                    session.progress_callback("Changes committed successfully", 80)
+                    await session.progress_callback("Changes committed successfully", 80)
                 
                 logger.info(
                     "Changes committed",
@@ -281,7 +281,7 @@ class WorktreeManager:
         session.completed_at = datetime.now()
         
         if session.progress_callback:
-            session.progress_callback("Session completed successfully", 100)
+            await session.progress_callback("Session completed successfully", 100)
         
         logger.info(
             "Session completed",
