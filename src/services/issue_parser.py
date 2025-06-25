@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 import structlog
+from src.models.configuration import AgentManager
 
 logger = structlog.get_logger()
 
@@ -49,6 +50,7 @@ class ParsedTask:
     estimated_complexity: str
     validation_errors: List[str]
     raw_issue_body: str
+    agent_id: str = "default"  # Which agent to use for this task
     acknowledgements_confirmed: bool = False
     issue_author: str = ""  # GitHub username who created the issue
 
@@ -57,8 +59,12 @@ class IssueParser:
     """Intelligent parser for GitHub issue templates"""
 
     def __init__(self):
+        # Initialize agent manager for dynamic agent discovery
+        self.agent_manager = AgentManager()
+        
         # Regex patterns for parsing GitHub issue template fields
         self.field_patterns = {
+            'agent': r'### Agent Selection\s*\n\s*(.+?)(?=\n###|\n\n|\Z)',
             'task-type': r'### Task Type\s*\n\s*(.+?)(?=\n###|\n\n|\Z)',
             'priority': r'### Priority Level\s*\n\s*(.+?)(?=\n###|\n\n|\Z)',
             'prompt': r'### Detailed Prompt\s*\n\s*(.*?)(?=\n###|\n\n(?=[A-Z])|\Z)',
@@ -68,6 +74,14 @@ class IssueParser:
             'acknowledgements': r'### Acknowledgements\s*\n(.*?)(?=\n###|\Z)'
         }
 
+        # Legacy mapping for backward compatibility (will be enhanced with fuzzy matching)
+        self.legacy_agent_mapping = {
+            'Default Assistant (Recommended)': 'default',
+            'Technical Expert (Detailed technical analysis)': 'technical-expert',
+            'Concise Helper (Quick, direct responses)': 'concise-helper', 
+            'Debugging Specialist (Systematic troubleshooting)': 'debugging-specialist'
+        }
+
     def parse_issue(self, issue_body: str, issue_title: str, issue_author: str = "") -> ParsedTask:
         """Parse GitHub issue body and extract structured task data"""
         logger.info("Parsing GitHub issue", title=issue_title[:50])
@@ -75,6 +89,7 @@ class IssueParser:
         validation_errors = []
         
         # Extract fields from issue body
+        agent_str = self._extract_field_value(issue_body, 'agent')
         task_type_str = self._extract_field_value(issue_body, 'task-type')
         priority_str = self._extract_field_value(issue_body, 'priority')
         prompt = self._extract_field_value(issue_body, 'prompt')
@@ -82,6 +97,11 @@ class IssueParser:
         context = self._extract_field_value(issue_body, 'context') or ""
         output_format_str = self._extract_field_value(issue_body, 'output-format')
         acknowledgements_text = self._extract_field_value(issue_body, 'acknowledgements') or ""
+
+        # Resolve agent selection with fuzzy matching
+        agent_id = self._resolve_agent_id(agent_str)
+        if agent_str and agent_id == "default" and not self._exact_match(agent_str):
+            validation_errors.append(f"Agent '{agent_str}' not found, using default")
 
         # Convert strings to enums with validation
         try:
@@ -123,6 +143,7 @@ class IssueParser:
             estimated_complexity="",  # Will be filled by _estimate_complexity
             validation_errors=validation_errors,
             raw_issue_body=issue_body,
+            agent_id=agent_id,
             acknowledgements_confirmed=acknowledgements_confirmed,
             issue_author=issue_author
         )
@@ -138,6 +159,7 @@ class IssueParser:
             "Issue parsing completed",
             task_type=parsed_task.task_type,
             priority=parsed_task.priority,
+            agent_id=parsed_task.agent_id,
             complexity=parsed_task.estimated_complexity,
             errors_count=len(parsed_task.validation_errors)
         )
@@ -288,5 +310,104 @@ class IssueParser:
             estimated_complexity="Simple",
             validation_errors=["Non-template issue - results may be limited"],
             raw_issue_body=issue_body,
+            agent_id="default",  # Use default agent for non-template issues
             acknowledgements_confirmed=False
         )
+
+    def _resolve_agent_id(self, agent_str: str) -> str:
+        """Resolve agent selection to actual agent ID with fuzzy matching"""
+        if not agent_str:
+            return "default"
+        
+        # Get available agents from filesystem
+        available_agents = self.agent_manager.load_all_agents()
+        
+        # 1. Exact legacy mapping first (backward compatibility)
+        if agent_str in self.legacy_agent_mapping:
+            agent_id = self.legacy_agent_mapping[agent_str]
+            if agent_id in available_agents:
+                logger.debug("Agent resolved via legacy mapping", 
+                           input=agent_str, resolved=agent_id)
+                return agent_id
+        
+        # 2. Exact agent ID match
+        if agent_str in available_agents:
+            logger.debug("Agent resolved via exact ID match", 
+                       input=agent_str, resolved=agent_str)
+            return agent_str
+        
+        # 3. Fuzzy matching against agent names
+        for agent_id, agent_config in available_agents.items():
+            if self._fuzzy_match(agent_str, agent_config.name):
+                logger.debug("Agent resolved via name fuzzy match", 
+                           input=agent_str, resolved=agent_id, name=agent_config.name)
+                return agent_id
+        
+        # 4. Fuzzy matching against agent IDs
+        for agent_id in available_agents.keys():
+            if self._fuzzy_match(agent_str, agent_id):
+                logger.debug("Agent resolved via ID fuzzy match", 
+                           input=agent_str, resolved=agent_id)
+                return agent_id
+        
+        # 5. Try partial matching for common words
+        agent_str_lower = agent_str.lower()
+        for agent_id, agent_config in available_agents.items():
+            # Check if key words from input are in agent name or description
+            if any(word in agent_config.name.lower() for word in agent_str_lower.split() if len(word) > 3):
+                logger.debug("Agent resolved via partial word match", 
+                           input=agent_str, resolved=agent_id, name=agent_config.name)
+                return agent_id
+        
+        # 6. Ultimate fallback
+        logger.info("Agent not found, using default", 
+                   input=agent_str, available=list(available_agents.keys()))
+        return "default"
+
+    def _fuzzy_match(self, user_input: str, target: str) -> bool:
+        """Simple fuzzy matching logic"""
+        if not user_input or not target:
+            return False
+            
+        user_lower = user_input.lower().strip()
+        target_lower = target.lower().strip()
+        
+        # Exact match
+        if user_lower == target_lower:
+            return True
+        
+        # Substring matching (both directions)
+        if user_lower in target_lower or target_lower in user_lower:
+            return True
+            
+        # Handle common transformations
+        user_normalized = user_lower.replace(" ", "-").replace("_", "-")
+        target_normalized = target_lower.replace(" ", "-").replace("_", "-")
+        
+        if user_normalized == target_normalized:
+            return True
+            
+        # Check if user input is contained in normalized target
+        if user_normalized in target_normalized or target_normalized in user_normalized:
+            return True
+        
+        # Handle common abbreviations/keywords
+        keywords = {
+            'debug': ['debugging', 'debug'],
+            'tech': ['technical', 'expert'],
+            'quick': ['concise', 'brief'],
+            'help': ['helpful', 'assistant'],
+            'short': ['concise', 'brief'],
+            'detailed': ['technical', 'expert', 'comprehensive'],
+            'simple': ['concise', 'helper']
+        }
+        
+        for keyword, matches in keywords.items():
+            if keyword in user_lower and any(match in target_lower for match in matches):
+                return True
+                
+        return False
+
+    def _exact_match(self, agent_str: str) -> bool:
+        """Check if the agent string is an exact match for legacy options"""
+        return agent_str in self.legacy_agent_mapping

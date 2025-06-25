@@ -9,7 +9,27 @@ body:
         ## Task Submission Form
         Please fill out the details below to queue a new task for the AI agent.
         
+        **🎯 Agent Selection**: Choose the agent that best fits your task:
+        - **Default Assistant**: Balanced, helpful responses (recommended for most tasks)
+        - **Technical Expert**: Detailed technical analysis with best practices
+        - **Concise Helper**: Quick, direct answers without verbose explanations  
+        - **Debugging Specialist**: Systematic troubleshooting and root cause analysis
+        
         **💡 Tip**: For general questions, you can use simpler validation requirements. The agent can answer questions about programming concepts, best practices, architecture advice, etc.
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent Selection
+      description: Choose which AI agent to use for this task.
+      options:
+        - "Default Assistant (Recommended)"
+        - "Technical Expert (Detailed technical analysis)"
+        - "Concise Helper (Quick, direct responses)"
+        - "Debugging Specialist (Systematic troubleshooting)"
+      default: 0
+    validations:
+      required: true
 
   - type: dropdown
     id: task-type

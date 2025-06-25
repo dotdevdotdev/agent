@@ -15,6 +15,8 @@ from .result_processor import ResultProcessor, ParsedResult, GitHubOutput, Outpu
 from .issue_parser import ParsedTask, TaskType, OutputFormat as IssueOutputFormat
 from .github_client import GitHubClient
 from .agent_state_machine import AgentStateMachine, AgentState
+from .agent_config_service import AgentConfigService
+from src.models.configuration import AgentConfig
 
 logger = structlog.get_logger()
 
@@ -39,6 +41,7 @@ class ProcessingContext:
     repository: str
     issue_number: int
     parsed_task: ParsedTask
+    agent_config: Optional[AgentConfig] = None
     session: Optional[WorktreeSession] = None
     prompt_context: Optional[PromptContext] = None
     built_prompt: Optional[BuiltPrompt] = None
@@ -68,13 +71,15 @@ class ProcessingOrchestrator:
                  prompt_builder: PromptBuilder = None,
                  result_processor: ResultProcessor = None,
                  github_client: GitHubClient = None,
-                 state_machine: AgentStateMachine = None):
+                 state_machine: AgentStateMachine = None,
+                 agent_config_service: AgentConfigService = None):
         
         self.worktree_manager = worktree_manager or WorktreeManager()
         self.prompt_builder = prompt_builder or PromptBuilder()
         self.result_processor = result_processor or ResultProcessor()
         self.github_client = github_client or GitHubClient()
         self.state_machine = state_machine
+        self.agent_config_service = agent_config_service or AgentConfigService()
         
         # Track active processing contexts
         self.active_contexts: Dict[str, ProcessingContext] = {}
@@ -86,15 +91,29 @@ class ProcessingOrchestrator:
                           repository: str,
                           issue_number: int,
                           parsed_task: ParsedTask,
-                          progress_callback: Callable[[str, int], None] = None) -> ProcessingContext:
+                          progress_callback: Callable[[str, int], None] = None,
+                          agent_id: str = None) -> ProcessingContext:
         """Execute complete processing workflow for a GitHub issue"""
+        
+        # Load agent configuration (prefer agent_id from parsed_task if available)
+        effective_agent_id = getattr(parsed_task, 'agent_id', None) or agent_id
+        agent_config = await self.agent_config_service.get_agent_config(effective_agent_id)
         
         context = ProcessingContext(
             job_id=job_id,
             repository=repository,
             issue_number=issue_number,
-            parsed_task=parsed_task
+            parsed_task=parsed_task,
+            agent_config=agent_config
         )
+        
+        # Store agent info in metadata
+        context.metadata.update({
+            "agent_name": agent_config.name,
+            "agent_id": effective_agent_id,
+            "agent_capabilities": agent_config.capabilities,
+            "agent_timeout": agent_config.timeout_seconds
+        })
         
         self.active_contexts[job_id] = context
         
@@ -149,15 +168,28 @@ class ProcessingOrchestrator:
                                      repository: str,
                                      issue_number: int,
                                      parsed_task: ParsedTask,
-                                     progress_callback: Callable[[str, int], None] = None) -> ProcessingContext:
+                                     progress_callback: Callable[[str, int], None] = None,
+                                     agent_id: str = None) -> ProcessingContext:
         """Simplified processing workflow for general questions (no git worktree needed)"""
+        
+        # Load agent configuration (prefer agent_id from parsed_task if available)
+        effective_agent_id = getattr(parsed_task, 'agent_id', None) or agent_id
+        agent_config = await self.agent_config_service.get_agent_config(effective_agent_id)
         
         context = ProcessingContext(
             job_id=job_id,
             repository=repository,
             issue_number=issue_number,
-            parsed_task=parsed_task
+            parsed_task=parsed_task,
+            agent_config=agent_config
         )
+        
+        # Store agent info in metadata
+        context.metadata.update({
+            "agent_name": agent_config.name,
+            "agent_id": effective_agent_id,
+            "is_general_question": True
+        })
         
         self.active_contexts[job_id] = context
         
@@ -227,7 +259,7 @@ class ProcessingOrchestrator:
         if progress_callback:
             progress_callback("Building optimized prompt for Claude Code CLI...", 25)
         
-        # Create prompt context
+        # Create prompt context with agent configuration
         context.prompt_context = PromptContext(
             repository_name=context.repository,
             issue_number=context.issue_number,
@@ -235,10 +267,26 @@ class ProcessingOrchestrator:
             working_directory=str(context.session.worktree_info.path)
         )
         
-        # Build the prompt
-        context.built_prompt = await self.prompt_builder.build_prompt(
+        # Get agent context files
+        agent_context_files = await self.agent_config_service.get_context_files(context.agent_config)
+        
+        # Build the prompt with agent-specific system prompt and context
+        agent_context = {
+            "repository_info": {"name": context.repository},
+            "task_type": context.parsed_task.task_type.value if hasattr(context.parsed_task.task_type, 'value') else str(context.parsed_task.task_type)
+        }
+        
+        # Get enhanced system prompt from agent config
+        enhanced_system_prompt = await self.agent_config_service.get_system_prompt(
+            context.agent_config, agent_context
+        )
+        
+        # Build the prompt with agent-specific configuration
+        context.built_prompt = await self.prompt_builder.build_prompt_with_agent(
             context.parsed_task,
-            context.prompt_context
+            context.prompt_context,
+            enhanced_system_prompt,
+            agent_context_files
         )
         
         # Store metadata
