@@ -38,6 +38,7 @@ jobs:
             --argjson comment '${{ toJson(github.event.comment) }}' \
             --argjson repository '${{ toJson(github.event.repository) }}' \
             --argjson sender '${{ toJson(github.event.sender) }}' \
+            --argjson label '${{ toJson(github.event.label) }}' \
             '{
               event_type: $event_type,
               action: $action,
@@ -45,6 +46,7 @@ jobs:
               comment: $comment,
               repository: $repository,
               sender: $sender,
+              label: $label,
               timestamp: now
             }')
 
