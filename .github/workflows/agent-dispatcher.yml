@@ -2,7 +2,7 @@ name: 🤖 Agent Task Dispatcher
 
 on:
   issues:
-    types: [labeled, closed]
+    types: [opened, labeled, closed]
   issue_comment:
     types: [created]
 
@@ -10,6 +10,7 @@ jobs:
   dispatch-to-agent:
     runs-on: ubuntu-latest
     if: |
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'agent:queued')) ||
       (github.event.action == 'labeled' && github.event.label.name == 'agent:queued') ||
       (github.event.action == 'created' && contains(github.event.issue.labels.*.name, 'agent:in-progress'))
 
@@ -30,27 +31,13 @@ jobs:
           AGENT_WEBHOOK_URL: ${{ secrets.AGENT_WEBHOOK_URL }}
           AGENT_WEBHOOK_SECRET: ${{ secrets.AGENT_WEBHOOK_SECRET }}
         run: |
-          # Prepare webhook payload  
-          echo '${{ toJson(github.event) }}' > /tmp/github_event.json
+          # Create webhook payload using GitHub's native JSON
+          cat > /tmp/webhook_payload.json << 'EOF'
+          ${{ toJson(github.event) }}
+          EOF
           
-          payload=$(jq -n \
-            --arg event_type "${{ github.event_name }}" \
-            --arg action "${{ github.event.action }}" \
-            --argjson issue '${{ toJson(github.event.issue) }}' \
-            --argjson comment '${{ toJson(github.event.comment) }}' \
-            --argjson repository '${{ toJson(github.event.repository) }}' \
-            --argjson sender '${{ toJson(github.event.sender) }}' \
-            --argjson label '${{ toJson(github.event.label) }}' \
-            '{
-              event_type: $event_type,
-              action: $action,
-              issue: $issue,
-              comment: $comment,
-              repository: $repository,
-              sender: $sender,
-              label: $label,
-              timestamp: now
-            }')
+          # Add event_type field to the payload
+          payload=$(cat /tmp/webhook_payload.json | jq '. + {event_type: "${{ github.event_name }}"}')
 
           # Generate HMAC signature
           signature=$(echo -n "$payload" | openssl dgst -sha256 -hmac "$AGENT_WEBHOOK_SECRET" | cut -d' ' -f2)
