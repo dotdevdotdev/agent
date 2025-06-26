@@ -31,11 +31,8 @@ jobs:
           AGENT_WEBHOOK_URL: ${{ secrets.AGENT_WEBHOOK_URL }}
           AGENT_WEBHOOK_SECRET: ${{ secrets.AGENT_WEBHOOK_SECRET }}
         run: |
-          # Create simple webhook payload
-          payload=$(cat << 'EOF'
-          ${{ toJson(github.event) }}
-          EOF
-          )
+          # Create webhook payload
+          payload='${{ toJson(github.event) }}'
 
           # Generate HMAC signature
           signature=$(echo -n "$payload" | openssl dgst -sha256 -hmac "$AGENT_WEBHOOK_SECRET" | cut -d' ' -f2)
