@@ -30,7 +30,9 @@ jobs:
           AGENT_WEBHOOK_URL: ${{ secrets.AGENT_WEBHOOK_URL }}
           AGENT_WEBHOOK_SECRET: ${{ secrets.AGENT_WEBHOOK_SECRET }}
         run: |
-          # Prepare webhook payload
+          # Prepare webhook payload  
+          echo '${{ toJson(github.event) }}' > /tmp/github_event.json
+          
           payload=$(jq -n \
             --arg event_type "${{ github.event_name }}" \
             --arg action "${{ github.event.action }}" \
