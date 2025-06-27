@@ -23,10 +23,18 @@ async def verify_webhook_signature(request: Request) -> None:
     """Verify GitHub webhook signature"""
     signature = request.headers.get("X-Hub-Signature-256")
     if not signature:
+        # Log and reject requests without signature
+        user_agent = request.headers.get("User-Agent", "unknown")
+        logger.warning("Webhook without signature rejected", user_agent=user_agent)
         raise HTTPException(status_code=401, detail="Missing webhook signature")
 
     body = await request.body()
+    if not body:
+        logger.warning("Empty webhook body in signature verification")
+        raise HTTPException(status_code=400, detail="Empty webhook body")
+        
     if not validate_github_webhook(body, signature, settings.GITHUB_WEBHOOK_SECRET):
+        logger.warning("Invalid webhook signature", signature=signature[:20] + "...")
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
 
@@ -44,9 +52,26 @@ async def github_webhook(
     delivery_id = request.headers.get("X-GitHub-Delivery", "unknown")
     
     try:
-        payload = await request.json()
+        body = await request.body()
+        logger.info("Webhook received", 
+                   body_length=len(body),
+                   user_agent=request.headers.get("User-Agent", "unknown"),
+                   content_type=request.headers.get("Content-Type", "unknown"),
+                   event_type=event_type)
+        
+        if not body:
+            logger.error("Empty webhook body received", 
+                        user_agent=request.headers.get("User-Agent"))
+            raise HTTPException(status_code=400, detail="Empty payload")
+        
+        # Parse JSON from the body bytes
+        import json
+        payload = json.loads(body.decode('utf-8'))
     except Exception as e:
-        logger.error("Failed to parse webhook payload", error=str(e))
+        logger.error("Failed to parse webhook payload", 
+                    error=str(e),
+                    user_agent=request.headers.get("User-Agent", "unknown"),
+                    body_preview=str(body[:100]) if 'body' in locals() else "no_body")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     logger.info(
