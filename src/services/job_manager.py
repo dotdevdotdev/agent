@@ -246,6 +246,11 @@ class JobManager:
     async def _archive_job_to_history(self, job: JobResponse, issue_title: str = "") -> None:
         """Archive completed job to persistent history"""
         try:
+            # Check if job is already archived to prevent duplicates
+            if any(entry.job_id == job.job_id for entry in self._history):
+                logger.debug("Job already archived, skipping", job_id=job.job_id)
+                return
+            
             # Create history entry
             history_entry = JobHistoryEntry.from_job_response(job, issue_title)
             

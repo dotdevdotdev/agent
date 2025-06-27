@@ -419,7 +419,7 @@ Our team will review this and provide a response. For immediate assistance with 
                 user_message="Simple acknowledgment provided"
             )
             
-            await self.job_manager.mark_job_completed(job_id, {"simple_response": True})
+            await self.job_manager.update_job_status(job_id, "completed", result={"simple_response": True})
             
             logger.info("Simple response provided", job_id=job_id, user=parsed_task.issue_author)
             
