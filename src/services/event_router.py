@@ -295,12 +295,23 @@ class IssueEventProcessor(EventProcessor):
                             if job and job.metadata:
                                 job.metadata["current_worktree_info"] = worktree_info
             
-            # Choose processing method based on task type and output format
+            # Check if user is admin to determine processing type
+            from config.settings import settings
+            is_admin = settings.is_admin_user(parsed_task.issue_author)
+            
+            # Choose processing method based on admin status and task type
             is_general_question = (
                 parsed_task.task_type == TaskType.QUESTION or 
                 parsed_task.output_format == IssueOutputFormat.GENERAL_RESPONSE
             )
             
+            # Non-admin users get simple responses regardless of task type
+            if not is_admin:
+                logger.info("Non-admin user detected, providing simple response", job_id=job_id, user=parsed_task.issue_author)
+                await self._provide_simple_response(job_id, job.repository_full_name, job.issue_number, parsed_task)
+                return
+            
+            # Admin users get full processing
             if is_general_question:
                 # Use simplified workflow for general questions
                 logger.info("Using simplified workflow for general question", job_id=job_id)
@@ -369,6 +380,55 @@ class IssueEventProcessor(EventProcessor):
             logger.info("Job restarted", job_id=job_id)
         except Exception as e:
             logger.error("Failed to restart job", job_id=job_id, error=str(e))
+
+    async def _provide_simple_response(self, job_id: str, repository: str, issue_number: int, parsed_task) -> None:
+        """Provide a simple acknowledgment response for non-admin users"""
+        try:
+            # Update state to in progress
+            await self.state_machine.transition_to(
+                job_id, AgentState.IN_PROGRESS,
+                user_message="Processing your request..."
+            )
+            
+            # Create simple acknowledgment message
+            simple_response = f"""## Thank you for your request!
+
+We've received your {parsed_task.task_type.value.lower()} request and will respond soon.
+
+**Your request:** {parsed_task.prompt[:200]}{'...' if len(parsed_task.prompt) > 200 else ''}
+
+Our team will review this and provide a response. For immediate assistance with urgent issues, please contact repository maintainers directly.
+
+---
+*This is an automated acknowledgment. A human will review and respond to your request.*"""
+
+            # Post the simple response
+            await self.github_client.create_comment(repository, issue_number, simple_response)
+            
+            # Update labels
+            await self.github_client.add_labels(repository, issue_number, ["agent:completed"])
+            try:
+                await self.github_client.remove_label(repository, issue_number, "agent:in-progress")
+                await self.github_client.remove_label(repository, issue_number, "agent:queued")
+            except:
+                pass  # Labels might not exist
+            
+            # Complete the job
+            await self.state_machine.transition_to(
+                job_id, AgentState.COMPLETED,
+                user_message="Simple acknowledgment provided"
+            )
+            
+            await self.job_manager.mark_job_completed(job_id, {"simple_response": True})
+            
+            logger.info("Simple response provided", job_id=job_id, user=parsed_task.issue_author)
+            
+        except Exception as e:
+            logger.error("Failed to provide simple response", job_id=job_id, error=str(e))
+            await self.state_machine.transition_to(
+                job_id, AgentState.FAILED,
+                user_message=f"Failed to provide response: {str(e)}"
+            )
 
     def _extract_worktree_info(self, result_context) -> Dict[str, Any]:
         """Extract worktree information for job recovery"""

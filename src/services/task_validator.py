@@ -39,8 +39,8 @@ class TaskValidator:
         ]
 
     def validate_task_completeness(self, task: ParsedTask) -> Dict[str, Any]:
-        """Check if task has sufficient information for processing"""
-        logger.info("Validating task completeness", task_type=task.task_type)
+        """Simple validation: check admin status and basic safety only"""
+        logger.info("Validating task", task_type=task.task_type, author=task.issue_author)
 
         validation_result = {
             'is_valid': True,
@@ -48,80 +48,35 @@ class TaskValidator:
             'errors': [],
             'warnings': [],
             'suggestions': [],
-            'completeness_score': 0,
+            'completeness_score': 100,  # Always pass completeness
             'feedback': ""
         }
-
-        # Check prompt quality
-        prompt_score = self._evaluate_prompt_quality(task.prompt)
-        validation_result['completeness_score'] += prompt_score
-
-        # Check context adequacy
-        context_score = self._evaluate_context_adequacy(task)
-        validation_result['completeness_score'] += context_score
-
-        # Check file references
-        files_score = self._evaluate_file_references(task.relevant_files)
-        validation_result['completeness_score'] += files_score
-
-        # Task-specific validation
-        task_specific_score = self._validate_task_specific_requirements(task)
-        validation_result['completeness_score'] += task_specific_score
-
-        # Security validation
-        security_issues = self._check_security_concerns(task)
-        if security_issues:
-            validation_result['errors'].extend(security_issues)
-            validation_result['has_errors'] = True
-
-        # Existing validation errors from parser
-        if task.validation_errors:
-            validation_result['errors'].extend(task.validation_errors)
-            validation_result['has_errors'] = True
-
-        # Generate improvement suggestions
-        suggestions = self.suggest_improvements(task)
-        validation_result['suggestions'] = suggestions
 
         # Check if user is admin
         is_admin = settings.is_admin_user(task.issue_author)
         
-        # Determine minimum score based on task type
-        if task.task_type == TaskType.QUESTION:
-            min_score = settings.GENERAL_QUESTION_MIN_SCORE
-        else:
-            min_score = settings.STANDARD_MIN_SCORE
-        
-        # Admin override logic
-        if is_admin:
-            validation_result['warnings'] = validation_result.get('warnings', [])
-            validation_result['warnings'].append("🔑 Admin user detected - validation requirements can be overridden")
-            # Admins see validation but are not blocked by it
-            if validation_result['completeness_score'] < min_score:
-                validation_result['warnings'].append(
-                    f"⚠️ Score below threshold ({validation_result['completeness_score']}/100 < {min_score}) but admin override allows processing"
-                )
-        else:
-            # Regular users must meet minimum score
-            if validation_result['completeness_score'] < min_score:
-                validation_result['is_valid'] = False
-                validation_result['errors'].append(
-                    f"Task completeness score too low: {validation_result['completeness_score']}/100 (minimum: {min_score})"
-                )
-        
-        # Add mode-specific feedback
-        if task.task_type == TaskType.QUESTION:
-            validation_result['warnings'] = validation_result.get('warnings', [])
-            validation_result['warnings'].append("💡 General question mode - lower validation threshold applied")
+        # Security validation (always check)
+        security_issues = self._check_security_concerns(task)
+        if security_issues:
+            validation_result['errors'].extend(security_issues)
+            validation_result['has_errors'] = True
+            validation_result['is_valid'] = False
 
-        # Generate feedback message
-        validation_result['feedback'] = self._generate_feedback_message(validation_result, task)
+        # Admin users: process everything (unless security issues)
+        if is_admin:
+            validation_result['warnings'].append("🔑 Admin user - full processing enabled")
+            if not validation_result['has_errors']:
+                validation_result['feedback'] = "✅ Admin user validated - processing task"
+        else:
+            # Non-admin users: always valid for simple responses
+            validation_result['warnings'].append("👤 Non-admin user - will respond with simple acknowledgment")
+            validation_result['feedback'] = "✅ Task accepted - we will respond soon"
 
         logger.info(
             "Task validation completed",
+            is_admin=is_admin,
             is_valid=validation_result['is_valid'],
-            score=validation_result['completeness_score'],
-            errors_count=len(validation_result['errors'])
+            has_security_issues=validation_result['has_errors']
         )
 
         return validation_result
@@ -349,11 +304,5 @@ class TaskValidator:
         """Check if task is ready for agent processing"""
         validation_result = self.validate_task_completeness(task)
         
-        # Admin users can override validation failures, otherwise use normal validation
-        is_admin = settings.is_admin_user(task.issue_author)
-        
-        if is_admin:
-            # Admin can process even with validation errors (they see warnings but aren't blocked)
-            return True
-        
+        # Only block processing for security issues, allow everything else
         return validation_result['is_valid'] and not validation_result['has_errors']
