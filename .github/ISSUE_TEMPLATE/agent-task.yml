@@ -1,110 +1,29 @@
-name: 🤖 New Agent Task
-description: Assign a new task to the Claude-powered agent.
+name: 🤖 Agent Task
+description: Submit a task for the AI agent
 title: "[AGENT]: "
 labels: ["agent:queued"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        ## Task Submission Form
-        Please fill out the details below to queue a new task for the AI agent.
-        
-        **🎯 Agent Selection**: Choose the agent that best fits your task:
-        - **Default Assistant**: Balanced, helpful responses (recommended for most tasks)
-        - **Technical Expert**: Detailed technical analysis with best practices
-        - **Concise Helper**: Quick, direct answers without verbose explanations  
-        - **Debugging Specialist**: Systematic troubleshooting and root cause analysis
-        
-        **💡 Tip**: For general questions, you can use simpler validation requirements. The agent can answer questions about programming concepts, best practices, architecture advice, etc.
-
-  - type: dropdown
-    id: agent
-    attributes:
-      label: Agent Selection
-      description: Choose which AI agent to use for this task.
-      options:
-        - "Default Assistant (Recommended)"
-        - "Technical Expert (Detailed technical analysis)"
-        - "Concise Helper (Quick, direct responses)"
-        - "Debugging Specialist (Systematic troubleshooting)"
-      default: 0
-    validations:
-      required: true
-
   - type: dropdown
     id: task-type
     attributes:
       label: Task Type
-      description: Select the primary capability you want the agent to use.
       options:
         - "Code Analysis"
-        - "Documentation Generation"
-        - "Code Refactoring"
-        - "Research and Summarization"
+        - "Documentation"
+        - "Bug Fix"
+        - "Feature Request"
         - "General Question"
-        - "Bug Investigation"
-        - "Feature Implementation"
-        - "Code Review"
-    validations:
-      required: true
-
-  - type: dropdown
-    id: priority
-    attributes:
-      label: Priority Level
-      description: How urgent is this task?
-      options:
-        - "Low"
-        - "Medium"
-        - "High"
-        - "Critical"
-      default: 1
+        - "Research"
+        - "Other"
+      default: 4
     validations:
       required: true
 
   - type: textarea
     id: prompt
     attributes:
-      label: Detailed Prompt
-      description: "Provide the full prompt for the agent. Be specific about what you want accomplished."
-      placeholder: "Example: Please analyze the performance of the `calculate_metrics` function and suggest optimizations..."
+      label: What would you like me to do?
+      description: "Describe your request. You can include file paths, URLs, or paste images."
+      placeholder: "Example: Analyze the performance issues in src/main.py, or What's the best way to implement authentication?"
     validations:
       required: true
-
-  - type: input
-    id: relevant-files
-    attributes:
-      label: Relevant Files or URLs
-      description: "Optional. Comma-separated list of file paths or URLs to focus on."
-      placeholder: "e.g., src/main.py, docs/architecture.md, https://github.com/owner/repo/issues/123"
-
-  - type: textarea
-    id: context
-    attributes:
-      label: Additional Context
-      description: "Any additional context, constraints, or requirements."
-      placeholder: "Background information, constraints, expected outcomes..."
-
-  - type: dropdown
-    id: output-format
-    attributes:
-      label: Preferred Output Format
-      description: How would you like the results delivered?
-      options:
-        - "Code changes with explanations"
-        - "Analysis report"
-        - "Documentation updates"
-        - "Implementation plan"
-        - "Bug fix with tests"
-        - "General response"
-      default: 0
-
-  - type: checkboxes
-    id: acknowledgements
-    attributes:
-      label: Acknowledgements
-      options:
-        - label: I understand this task will be processed by an AI agent.
-          required: true
-        - label: I have provided sufficient detail for the agent to complete this task.
-          required: true

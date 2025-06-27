@@ -15,15 +15,11 @@ jobs:
       (github.event.action == 'created' && contains(github.event.issue.labels.*.name, 'agent:in-progress'))
 
     steps:
-      - name: Validate Issue Template
+      - name: Validate Request
         id: validate
         run: |
-          # Check if issue uses agent template
-          if [[ "${{ github.event.issue.body }}" == *"Task Type"* ]]; then
-            echo "valid=true" >> $GITHUB_OUTPUT
-          else
-            echo "valid=false" >> $GITHUB_OUTPUT
-          fi
+          # Always valid - admin users trusted, simple validation on server side
+          echo "valid=true" >> $GITHUB_OUTPUT
 
       - name: Send Webhook to Agent Server
         if: steps.validate.outputs.valid == 'true'
