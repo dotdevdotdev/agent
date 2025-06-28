@@ -107,10 +107,14 @@ class IssueEventProcessor(EventProcessor):
             return {"status": "ignored", "reason": "Not an agent task"}
 
         # Check if a job already exists for this issue to prevent duplicates
+        issue_id = issue.get('id')
         existing_jobs = await self.job_manager.list_jobs()
         for existing_job in existing_jobs:
+            # Check both issue number and issue ID to ensure it's the same GitHub issue
+            existing_issue_id = existing_job.metadata.get('github_issue_id')
             if (existing_job.repository_full_name == repo_full_name and 
                 existing_job.issue_number == issue_number and
+                existing_issue_id == issue_id and
                 existing_job.status in ['pending', 'running']):
                 logger.info(
                     "Job already exists for this issue",
@@ -141,7 +145,8 @@ class IssueEventProcessor(EventProcessor):
                 issue_body=issue_body,
                 metadata={
                     'parsed_task': parsed_task.__dict__,
-                    'validation_result': validation_result
+                    'validation_result': validation_result,
+                    'github_issue_id': issue_id
                 }
             )
 
@@ -197,12 +202,15 @@ class IssueEventProcessor(EventProcessor):
 
         # Check for agent:queued label (restart/retry)
         if label_name == 'agent:queued':
-            # Check if there's an existing job
+            # Check if there's an existing job for this specific GitHub issue
+            issue_id = issue.get('id')
             existing_jobs = await self.job_manager.list_jobs()
             existing_job = None
             for job in existing_jobs:
+                existing_issue_id = job.metadata.get('github_issue_id')
                 if (job.repository_full_name == repo_full_name and 
-                    job.issue_number == issue_number):
+                    job.issue_number == issue_number and
+                    existing_issue_id == issue_id):
                     existing_job = job
                     break
 

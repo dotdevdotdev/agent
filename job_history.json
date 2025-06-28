@@ -201,5 +201,138 @@
       }
     },
     "duration_seconds": 9.856791
+  },
+  {
+    "job_id": "5f628d53-f5c4-4aa1-9af0-8679b8c6935f",
+    "status": "failed",
+    "issue_number": 64,
+    "repository_full_name": "dotdevdotdev/agent",
+    "issue_title": "",
+    "created_at": "2025-06-27T23:02:25.847572",
+    "started_at": "2025-06-27T23:02:25.847980",
+    "completed_at": "2025-06-27T23:02:26.151127",
+    "error_message": null,
+    "result": null,
+    "progress": 0.0,
+    "metadata": {
+      "parsed_task": {
+        "task_type": "General Question",
+        "priority": "Medium",
+        "prompt": "Please analyze: Test End-to-End System Functionality",
+        "relevant_files": [],
+        "context": "This is a test issue to validate the complete workflow after recent reliability improvements.",
+        "output_format": "Analysis report",
+        "estimated_complexity": "Simple",
+        "validation_errors": [
+          "Invalid task type: Code Enhancement",
+          "Detailed prompt is required"
+        ],
+        "raw_issue_body": "### Task Type\n\nCode Enhancement\n\n### What would you like me to do?\n\nPlease verify that the end-to-end system is working correctly by performing a simple analysis of the current repository state and providing a brief report.\n\n### Relevant Files (optional)\n\n- README.md\n- main.py\n\n### Additional Context\n\nThis is a test issue to validate the complete workflow after recent reliability improvements.\n\n### Acknowledgements\n\n- [x] I confirm this is a valid coding task\n- [x] I understand this will create a git worktree for isolated processing",
+        "agent_id": "default",
+        "acknowledgements_confirmed": true,
+        "issue_author": "test-non-admin-user"
+      },
+      "validation_result": {
+        "is_valid": true,
+        "has_errors": false,
+        "errors": [],
+        "warnings": [
+          "\ud83d\udc64 Non-admin user - will respond with simple acknowledgment"
+        ],
+        "suggestions": [],
+        "completeness_score": 100,
+        "feedback": "\u2705 Task accepted - we will respond soon"
+      }
+    },
+    "duration_seconds": 0.303147
+  },
+  {
+    "job_id": "4fef31cb-df73-479c-b26f-6a9ed7980377",
+    "status": "failed",
+    "issue_number": 63,
+    "repository_full_name": "dotdevdotdev/agent",
+    "issue_title": "",
+    "created_at": "2025-06-27T23:00:12.538637",
+    "started_at": "2025-06-27T23:00:12.538834",
+    "completed_at": "2025-06-27T23:03:36.376107",
+    "error_message": "General question processing failed: GitHub API error: 404",
+    "result": null,
+    "progress": 0.3,
+    "metadata": {
+      "parsed_task": {
+        "task_type": "General Question",
+        "priority": "Medium",
+        "prompt": "Please analyze: Test End-to-End System Functionality",
+        "relevant_files": [],
+        "context": "This is a test issue to validate the complete workflow after recent reliability improvements.",
+        "output_format": "Analysis report",
+        "estimated_complexity": "Simple",
+        "validation_errors": [
+          "Invalid task type: Code Enhancement",
+          "Detailed prompt is required"
+        ],
+        "raw_issue_body": "### Task Type\n\nCode Enhancement\n\n### What would you like me to do?\n\nPlease verify that the end-to-end system is working correctly by performing a simple analysis of the current repository state and providing a brief report.\n\n### Relevant Files (optional)\n\n- README.md\n- main.py\n\n### Additional Context\n\nThis is a test issue to validate the complete workflow after recent reliability improvements.\n\n### Acknowledgements\n\n- [x] I confirm this is a valid coding task\n- [x] I understand this will create a git worktree for isolated processing",
+        "agent_id": "default",
+        "acknowledgements_confirmed": true,
+        "issue_author": "dotdevdotdev"
+      },
+      "validation_result": {
+        "is_valid": true,
+        "has_errors": false,
+        "errors": [],
+        "warnings": [
+          "\ud83d\udd11 Admin user - full processing enabled"
+        ],
+        "suggestions": [],
+        "completeness_score": 100,
+        "feedback": "\u2705 Admin user validated - processing task"
+      }
+    },
+    "duration_seconds": 203.837273
+  },
+  {
+    "job_id": "740c07f0-4d19-4ab8-bae6-1dffedb7f2a8",
+    "status": "completed",
+    "issue_number": 64,
+    "repository_full_name": "dotdevdotdev/agent",
+    "issue_title": "",
+    "created_at": "2025-06-27T23:59:28.816743",
+    "started_at": "2025-06-27T23:59:28.817065",
+    "completed_at": "2025-06-27T23:59:42.317538",
+    "error_message": null,
+    "result": null,
+    "progress": 1.0,
+    "metadata": {
+      "parsed_task": {
+        "task_type": "General Question",
+        "priority": "Medium",
+        "prompt": "Please analyze: [AGENT]: lyrics for a song",
+        "relevant_files": [],
+        "context": "",
+        "output_format": "Analysis report",
+        "estimated_complexity": "Simple",
+        "validation_errors": [
+          "Detailed prompt is required",
+          "Please confirm the acknowledgements in the issue form"
+        ],
+        "raw_issue_body": "### Task Type\n\nGeneral Question\n\n### What would you like me to do?\n\ncan you please write song lyrics for a pop song with the chorus main hook line is \"I couldn't, I wouldn't, I shouldn't...\"",
+        "agent_id": "default",
+        "acknowledgements_confirmed": false,
+        "issue_author": "dotdevdotdev"
+      },
+      "validation_result": {
+        "is_valid": true,
+        "has_errors": false,
+        "errors": [],
+        "warnings": [
+          "\ud83d\udd11 Admin user - full processing enabled"
+        ],
+        "suggestions": [],
+        "completeness_score": 100,
+        "feedback": "\u2705 Admin user validated - processing task"
+      },
+      "github_issue_id": 3184327679
+    },
+    "duration_seconds": 13.500473
   }
 ]
